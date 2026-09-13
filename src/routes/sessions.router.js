@@ -5,4 +5,6 @@ const router = Router();
 
 router.get("/", sessionsController.getSessions);
 
+router.post("/register", sessionsController.register);
+
 export default router;
