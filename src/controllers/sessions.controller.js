@@ -7,7 +7,7 @@ const getSessions = (req, res) => {
   });
 };
 
-const register = async (req, res) => {
+const register = async (req, res, next) => {
   try {
     const user = await sessionsService.registerUser(req.body);
 
@@ -24,12 +24,7 @@ const register = async (req, res) => {
       payload: userResponse,
     });
   } catch (error) {
-    const status = error.status || 400;
-
-    res.status(status).json({
-      status: "error",
-      message: error.message,
-    });
+    next(error);
   }
 };
 

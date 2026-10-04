@@ -7,8 +7,14 @@ const registerUser = async ({
   email,
   password,
 }) => {
+  const validationError = (message) => {
+    const error = new Error(message);
+    error.status = 400;
+    return error;
+  };
+
   if (!first_name || !last_name || !email || !password) {
-    throw new Error("Faltan campos obligatorios");
+    throw validationError("Faltan campos obligatorios");
   }
 
   const normalizedEmail = email.trim().toLowerCase();
@@ -16,11 +22,11 @@ const registerUser = async ({
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   if (!emailRegex.test(normalizedEmail)) {
-    throw new Error("El email no es válido");
+    throw validationError("El email no es válido");
   }
 
   if (password.length < 6) {
-    throw new Error("La contraseña debe tener al menos 6 caracteres");
+    throw validationError("La contraseña debe tener al menos 6 caracteres");
   }
 
   const existingUser = await usersRepository.findUserByEmail(normalizedEmail);

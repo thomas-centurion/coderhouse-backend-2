@@ -1,11 +1,9 @@
-import "dotenv/config";
 import app from "./app.js";
 import connectDB from "./config/database.js";
-
-const PORT = process.env.PORT || 3000;
+import env from "./config/env.js";
 
 connectDB();
 
-app.listen(PORT, () => {
-  console.log(`Servidor escuchando en el puerto ${PORT}`);
+app.listen(env.PORT, () => {
+  console.log(`Servidor escuchando en el puerto ${env.PORT}`);
 });
