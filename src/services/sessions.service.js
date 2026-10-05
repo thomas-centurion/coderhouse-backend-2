@@ -1,5 +1,6 @@
 import usersRepository from "../repositories/users.repository.js";
-import { hashPassword } from "../utils/hash.js";
+import { comparePassword, hashPassword } from "../utils/hash.js";
+import { generateToken } from "../utils/jwt.js";
 
 const registerUser = async ({
   first_name,
@@ -49,6 +50,30 @@ const registerUser = async ({
   return user;
 };
 
+const loginUser = async ({ email, password } = {}) => {
+  if (!email || !password) {
+    const error = new Error("Email y contraseña son obligatorios");
+    error.status = 400;
+    throw error;
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await usersRepository.findUserByEmail(normalizedEmail);
+
+  if (!user || !(await comparePassword(password, user.password))) {
+    const error = new Error("Credenciales inválidas");
+    error.status = 401;
+    throw error;
+  }
+
+  return generateToken({
+    id: user._id.toString(),
+    email: user.email,
+    role: user.role,
+  });
+};
+
 export default {
   registerUser,
+  loginUser,
 };

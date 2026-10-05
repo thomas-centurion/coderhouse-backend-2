@@ -13,6 +13,8 @@ El proyecto consiste en una API REST para gestionar usuarios y eventos, que se i
 - JavaScript
 - ESM (ECMAScript Modules)
 - dotenv
+- cookie-parser
+- jsonwebtoken
 - MongoDB
 - Mongoose
 - bcrypt
@@ -27,37 +29,31 @@ npm install
 
 ## Variables de entorno
 
-Crear un archivo `.env` en la raíz del proyecto tomando como referencia el archivo `.env.example`.
-
-El archivo `.env` debe contener las siguientes variables:
+Crear un archivo `.env` en la raíz del proyecto tomando como referencia `.env.example`.
 
 ```env
 PORT=3000
 NODE_ENV=development
 MONGO_URL=tu_url_de_mongodb
 JWT_SECRET=tu_secreto
+JWT_EXPIRES_IN=1h
 ```
 
-### Descripción de las variables
-
-- `PORT`: puerto en el que se ejecutará el servidor.
-- `NODE_ENV`: entorno de ejecución de la aplicación.
-- `MONGO_URL`: URL de conexión a la base de datos MongoDB.
-- `JWT_SECRET`: clave que será utilizada en las próximas etapas para la autenticación mediante JWT.
+- `PORT`: puerto del servidor.
+- `NODE_ENV`: entorno de ejecución.
+- `MONGO_URL`: URL de conexión a MongoDB.
+- `JWT_SECRET`: secreto utilizado para firmar y verificar JWT.
+- `JWT_EXPIRES_IN`: tiempo de validez del JWT, por ejemplo `1h`.
 
 El archivo `.env` contiene información sensible y no debe subirse al repositorio.
 
 ## Ejecución
 
-Para iniciar el servidor:
-
 ```bash
 npm start
 ```
 
-Por defecto, el servidor utiliza el puerto `3000`.
-
-Al iniciar correctamente, la aplicación establece la conexión con MongoDB y levanta el servidor Express.
+Por defecto, el servidor utiliza el puerto `3000`. Al iniciar correctamente, establece la conexión con MongoDB y levanta el servidor Express.
 
 ## Estructura del proyecto
 
@@ -68,11 +64,14 @@ src/
 │   └── env.js
 ├── controllers/
 │   ├── events.controller.js
+│   ├── health.controller.js
 │   └── sessions.controller.js
 ├── dao/
 │   └── users.dao.js
 ├── middlewares/
-│   └── error.middleware.js
+│   ├── auth.middleware.js
+│   ├── error.middleware.js
+│   └── not-found.middleware.js
 ├── models/
 │   ├── Event.js
 │   └── User.js
@@ -85,7 +84,8 @@ src/
 ├── services/
 │   └── sessions.service.js
 ├── utils/
-│   └── hash.js
+│   ├── hash.js
+│   └── jwt.js
 ├── app.js
 └── server.js
 ```
@@ -98,14 +98,15 @@ src/
 | GET | `/api/events` | Obtiene la lista de eventos |
 | GET | `/api/sessions` | Ruta inicial para el recurso de sesiones |
 | POST | `/api/sessions/register` | Registra un nuevo usuario |
+| POST | `/api/sessions/login` | Inicia sesión y establece la cookie de autenticación |
+| GET | `/api/sessions/current` | Devuelve los datos públicos del usuario autenticado |
+| POST | `/api/sessions/logout` | Cierra la sesión y elimina la cookie |
 
 ## GET `/api/health`
 
 Comprueba que el servidor se encuentre activo.
 
-### Respuesta
-
-HTTP `200`
+**Respuesta:** HTTP `200`
 
 ```json
 {
@@ -116,13 +117,9 @@ HTTP `200`
 
 ## GET `/api/events`
 
-Obtiene la lista de eventos.
+Obtiene la lista de eventos. En esta etapa puede devolver una lista vacía.
 
-En esta etapa puede devolver una lista vacía.
-
-### Respuesta
-
-HTTP `200`
+**Respuesta:** HTTP `200`
 
 ```json
 {
@@ -133,15 +130,13 @@ HTTP `200`
 
 ## GET `/api/sessions`
 
-Ruta inicial para el recurso de sesiones.
-
-Esta ruta forma parte de la estructura inicial del recurso de sesiones y será ampliada en próximas entregas con funcionalidades de autenticación.
+Ruta inicial para el recurso de sesiones. En esta etapa responde con una lista vacía.
 
 ## POST `/api/sessions/register`
 
 Registra un nuevo usuario en MongoDB.
 
-### Body esperado
+**Body esperado:**
 
 ```json
 {
@@ -152,7 +147,7 @@ Registra un nuevo usuario en MongoDB.
 }
 ```
 
-### Campos obligatorios
+Campos obligatorios:
 
 - `first_name`
 - `last_name`
@@ -161,58 +156,17 @@ Registra un nuevo usuario en MongoDB.
 
 La contraseña debe tener al menos 6 caracteres.
 
-### Normalización del email
+El email se normaliza eliminando espacios al inicio y al final y convirtiéndolo a minúsculas. Por ejemplo, `" Ana@Mail.com "` se almacena como `"ana@mail.com"`.
 
-Antes de guardar el usuario, el email es:
+La contraseña nunca se almacena en texto plano; se genera un hash mediante `bcrypt` utilizando `src/utils/hash.js`.
 
-1. Eliminado de espacios al inicio y al final.
-2. Convertido a minúsculas.
-
-Por ejemplo:
-
-```text
-" Ana@Mail.com "
-```
-
-se almacena como:
-
-```text
-"ana@mail.com"
-```
-
-### Contraseña
-
-La contraseña nunca se almacena en texto plano.
-
-Antes de persistirse en MongoDB se genera un hash utilizando `bcrypt`.
-
-La lógica de hash se encuentra en:
-
-```text
-src/utils/hash.js
-```
-
-### Rol
-
-Los usuarios registrados mediante este endpoint reciben el rol:
-
-```text
-user
-```
-
-por defecto.
-
-El campo `role` no puede ser manipulado desde el body del registro público.
-
-Los valores permitidos para el campo son:
+Los usuarios registrados reciben el rol `user` por defecto. El campo `role` no puede ser manipulado desde el registro público. Los valores permitidos son:
 
 - `user`
 - `organizer`
 - `admin`
 
-### Respuesta exitosa
-
-HTTP `201`
+**Respuesta exitosa:** HTTP `201`
 
 ```json
 {
@@ -229,11 +183,7 @@ HTTP `201`
 
 La contraseña no se incluye en la respuesta, ni en texto plano ni en su versión hasheada.
 
-### Campos faltantes
-
-Si faltan campos obligatorios, la API responde con HTTP `400`.
-
-Ejemplo:
+Si faltan campos obligatorios, responde HTTP `400`:
 
 ```json
 {
@@ -242,13 +192,7 @@ Ejemplo:
 }
 ```
 
-### Email inválido
-
-Si el email no tiene un formato válido, la API responde con HTTP `400`.
-
-### Email duplicado
-
-Si el email ya se encuentra registrado, la API responde con HTTP `409`.
+Un email inválido responde HTTP `400`. Un email ya registrado responde HTTP `409`:
 
 ```json
 {
@@ -259,208 +203,147 @@ Si el email ya se encuentra registrado, la API responde con HTTP `409`.
 
 ## Seguridad
 
-Las contraseñas nunca se almacenan en texto plano.
-
-Antes de persistirse en MongoDB son procesadas mediante `bcrypt`.
-
-Además:
-
-- El endpoint de registro no devuelve la contraseña.
-- El endpoint de registro tampoco devuelve el hash de la contraseña.
+- Las contraseñas se procesan mediante `bcrypt`.
+- El registro no devuelve la contraseña ni su hash.
 - El campo `role` no puede ser definido por el usuario durante el registro público.
 - Las variables sensibles se almacenan mediante variables de entorno.
-- El archivo `.env` se encuentra excluido del repositorio mediante `.gitignore`.
+- `.env` está excluido del repositorio mediante `.gitignore`.
 
 ## Arquitectura
 
-El proyecto utiliza una arquitectura por capas para separar responsabilidades y facilitar el mantenimiento y crecimiento de la aplicación.
-
-El flujo principal del registro de usuarios es:
+El proyecto utiliza una arquitectura por capas:
 
 ```text
-Cliente
-   ↓
-Route
-   ↓
-Controller
-   ↓
-Service
-   ↓
-Repository
-   ↓
-DAO
-   ↓
-Model
-   ↓
-MongoDB
+Route → Controller → Service → Repository → DAO → Model → MongoDB
 ```
 
-### Routes
+- **Routes:** definen los endpoints y derivan las solicitudes al controller.
+- **Controllers:** gestionan las solicitudes y respuestas HTTP.
+- **Services:** contienen la lógica de negocio.
+- **Repositories:** desacoplan la lógica de negocio del acceso a datos.
+- **DAO:** realizan las operaciones sobre los modelos.
+- **Models:** representan los documentos de MongoDB mediante Mongoose.
+- **Middlewares:** gestionan autenticación, errores y rutas inexistentes.
+- **Utils:** contienen funciones reutilizables como hash y JWT.
+- **Config:** centraliza variables de entorno y conexión a MongoDB.
 
-Las rutas definen los endpoints disponibles y reciben las solicitudes HTTP.
+El modelo `User` define `first_name`, `last_name`, `email`, `password` y `role`. El modelo `Event` representa la estructura inicial de eventos con `title`, `description` y `date`.
 
-Se encuentran en:
-
-```text
-src/routes/
-```
-
-Actualmente se utilizan:
-
-- `health.router.js`
-- `events.router.js`
-- `sessions.router.js`
-
-Las rutas no contienen lógica de negocio. Su responsabilidad principal es dirigir las solicitudes hacia el controller correspondiente.
-
-### Controllers
-
-Los controllers reciben las solicitudes provenientes de las rutas y se encargan de coordinar la respuesta HTTP.
-
-Se encuentran en:
-
-```text
-src/controllers/
-```
-
-Actualmente se utilizan:
-
-- `events.controller.js`
-- `sessions.controller.js`
-
-Por ejemplo, `sessions.controller.js` recibe los datos enviados al endpoint de registro y delega la lógica al service.
-
-### Services
-
-Los services contienen la lógica de negocio de la aplicación.
-
-Se encuentran en:
-
-```text
-src/services/
-```
-
-En esta entrega, `sessions.service.js` se encarga de:
-
-- validar los datos recibidos;
-- validar el formato del email;
-- normalizar el email;
-- verificar si el usuario ya existe;
-- generar el hash de la contraseña;
-- solicitar la creación del usuario al repository.
-
-### Repositories
-
-Los repositories desacoplan la lógica de negocio del acceso a los datos.
-
-Se encuentran en:
-
-```text
-src/repositories/
-```
-
-En esta entrega, `users.repository.js` se encarga de trabajar con el DAO para realizar las operaciones relacionadas con los usuarios.
-
-### DAO
-
-La capa DAO contiene las operaciones de acceso directo a los modelos de datos.
-
-Se encuentra en:
-
-```text
-src/dao/
-```
-
-En esta entrega, `users.dao.js` utiliza el modelo `User` para consultar y persistir usuarios en MongoDB.
-
-### Models
-
-Los modelos representan la estructura de los documentos almacenados en MongoDB mediante Mongoose.
-
-Se encuentran en:
-
-```text
-src/models/
-```
-
-El modelo `User` define los siguientes campos:
-
-- `first_name`
-- `last_name`
-- `email`
-- `password`
-- `role`
-
-El campo `role` utiliza `user` como valor por defecto y permite los valores:
-
-- `user`
-- `organizer`
-- `admin`
-
-El modelo `Event` representa la estructura inicial del recurso de eventos.
-
-### Utils
-
-La carpeta `utils` contiene funciones reutilizables que no pertenecen directamente a una capa específica de negocio.
-
-Se encuentra en:
-
-```text
-src/utils/
-```
-
-En esta entrega, `hash.js` contiene la función reutilizable encargada de generar hashes de contraseñas mediante `bcrypt`.
-
-### Config
-
-La configuración de la aplicación se encuentra en:
-
-```text
-src/config/
-```
-
-`env.js` centraliza la lectura de las variables de entorno utilizadas por la aplicación.
-
-`database.js` contiene la lógica necesaria para establecer la conexión con MongoDB mediante Mongoose.
-
-### Middlewares
-
-Los middlewares permiten ejecutar lógica intermedia durante el procesamiento de las solicitudes.
-
-Se encuentran en:
-
-```text
-src/middlewares/
-```
-
-En esta entrega se utiliza `error.middleware.js` para centralizar el manejo de errores de la aplicación.
-
-Los errores generados durante el procesamiento de las solicitudes son delegados al middleware global de Express.
-
-### App y Server
-
-`app.js` se encarga de configurar Express, registrar los middlewares y montar las rutas de la aplicación.
-
-`server.js` se encarga de iniciar el servidor, establecer la conexión con MongoDB y utilizar el puerto configurado mediante variables de entorno.
-
-Esta separación permite mantener independiente la configuración de Express del proceso de inicio del servidor.
+La ruta de health delega la respuesta en `health.controller.js`. Las rutas inexistentes reciben una respuesta JSON 404 mediante `not-found.middleware.js`, registrado después de las rutas y antes del middleware global de errores.
 
 ## Pre-entrega 2
 
-Esta entrega incorpora el primer flujo real de usuarios de la Plataforma de Eventos e Inscripciones.
+Se implementó el registro de usuarios con validaciones, normalización de emails, hash de contraseñas mediante `bcrypt`, persistencia en MongoDB y arquitectura por capas.
 
-Se implementaron:
+## Pre-entrega 3: autenticación con JWT y cookies
 
-- Registro de usuarios.
-- Validación de datos.
-- Validación del formato del email.
-- Normalización de emails.
-- Prevención de usuarios duplicados.
-- Hash de contraseñas con `bcrypt`.
-- Persistencia de usuarios en MongoDB mediante Mongoose.
-- Rol `user` por defecto.
-- Protección del campo `role` durante el registro público.
-- Separación de responsabilidades mediante Route, Controller, Service, Repository, DAO y Model.
-- Helper reutilizable para el hash de contraseñas.
-- Manejo centralizado de errores mediante middleware.
-- Configuración mediante variables de entorno.
+### Login
+
+`POST /api/sessions/login` recibe email y contraseña en JSON:
+
+```json
+{
+  "email": "ana@mail.com",
+  "password": "Secreta123"
+}
+```
+
+Con credenciales válidas responde HTTP `200`:
+
+```json
+{
+  "status": "success",
+  "message": "Login correcto"
+}
+```
+
+y establece la cookie `currentUser`.
+
+Usuario inexistente o contraseña incorrecta responde HTTP `401` con:
+
+```json
+{
+  "status": "error",
+  "message": "Credenciales inválidas"
+}
+```
+
+No se distinguen ambos casos. Si faltan credenciales, responde HTTP `400`.
+
+### Current
+
+`GET /api/sessions/current` requiere la cookie válida `currentUser`.
+
+**Ejemplo de request:**
+
+```http
+GET /api/sessions/current
+Cookie: currentUser=<JWT>
+```
+
+**Respuesta:** HTTP `200`
+
+```json
+{
+  "status": "success",
+  "payload": {
+    "id": "665f2a...",
+    "email": "ana@mail.com",
+    "role": "user"
+  }
+}
+```
+
+Sin cookie, con token inválido o expirado responde HTTP `401`:
+
+```json
+{
+  "status": "error",
+  "message": "No autenticado"
+}
+```
+
+### Logout
+
+`POST /api/sessions/logout` elimina la cookie `currentUser` y no requiere autenticación.
+
+**Ejemplo de request:**
+
+```http
+POST /api/sessions/logout
+Cookie: currentUser=<JWT>
+```
+
+No requiere body.
+
+**Respuesta:** HTTP `200`
+
+```json
+{
+  "status": "success",
+  "message": "Sesión cerrada"
+}
+```
+
+### Autenticación y variables de entorno
+
+El service valida las credenciales y utiliza `bcrypt` para comparar la contraseña. La lógica de JWT se encuentra en `src/utils/jwt.js`.
+
+El JWT contiene únicamente:
+
+- `id`
+- `email`
+- `role`
+
+Su expiración se configura mediante `JWT_EXPIRES_IN`.
+
+La cookie `currentUser` utiliza:
+
+- `httpOnly=true`
+- `sameSite=lax`
+- `maxAge=3600000`
+- `secure=true` solamente cuando `NODE_ENV=production`
+
+`/current` valida el token sin consultar MongoDB.
+
+Las variables de entorno utilizadas son `PORT`, `MONGO_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN` y `NODE_ENV`. El secreto JWT debe mantenerse privado y `.env` no debe subirse al repositorio.
