@@ -6,12 +6,26 @@ import authorize from "../middlewares/authorize.middleware.js";
 const router = Router();
 
 router.get("/", eventsController.getEvents);
+router.get("/:id", eventsController.getEventById);
 router.post(
   "/",
   authMiddleware,
   authorize("organizer", "admin"),
   eventsController.createEvent,
 );
+router.patch(
+  "/:id/status",
+  authMiddleware,
+  authorize("organizer", "admin"),
+  eventsController.updateEventStatus,
+);
+router.put(
+  "/:id",
+  authMiddleware,
+  authorize("organizer", "admin"),
+  eventsController.updateEvent,
+);
+// Compatibilidad con la ruta PATCH existente en P5.
 router.patch(
   "/:id",
   authMiddleware,

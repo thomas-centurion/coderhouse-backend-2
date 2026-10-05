@@ -2,11 +2,18 @@ import eventsService from "../services/events.service.js";
 
 const getEvents = async (req, res, next) => {
   try {
-    const events = await eventsService.getEvents();
-    res.status(200).json({ status: "success", payload: events });
+    const result = await eventsService.getEvents(req.query);
+    res.status(200).json({ status: "success", payload: result });
   } catch (error) {
     next(error);
   }
+};
+
+const getEventById = async (req, res, next) => {
+  try {
+    const event = await eventsService.getEventById(req.params.id);
+    res.status(200).json({ status: "success", payload: event });
+  } catch (error) { next(error); }
 };
 
 const createEvent = async (req, res, next) => {
@@ -43,9 +50,18 @@ const cancelEvent = async (req, res, next) => {
   }
 };
 
+const updateEventStatus = async (req, res, next) => {
+  try {
+    const event = await eventsService.updateEventStatus(req.params.id, req.body?.status, req.user);
+    res.status(200).json({ status: "success", payload: event });
+  } catch (error) { next(error); }
+};
+
 export default {
   getEvents,
+  getEventById,
   createEvent,
   updateEvent,
   cancelEvent,
+  updateEventStatus,
 };

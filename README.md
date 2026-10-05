@@ -105,8 +105,11 @@ src/
 |---|---|---|
 | GET | `/api/health` | Comprueba que el servidor esté activo |
 | GET | `/api/events` | Obtiene la lista de eventos |
+| GET | `/api/events/:id` | Obtiene un evento por ID |
 | POST | `/api/events` | Crea un evento (organizer/admin) |
+| PUT | `/api/events/:id` | Modifica un evento propio (organizer) o cualquiera (admin) |
 | PATCH | `/api/events/:id` | Modifica un evento propio (organizer) o cualquiera (admin) |
+| PATCH | `/api/events/:id/status` | Cambia el estado del evento (organizer/admin propietario o admin) |
 | DELETE | `/api/events/:id` | Cancela un evento propio (organizer) o cualquiera (admin) |
 | GET | `/api/sessions` | Ruta inicial para el recurso de sesiones |
 | POST | `/api/sessions/register` | Registra un nuevo usuario |
@@ -130,14 +133,14 @@ Comprueba que el servidor se encuentre activo.
 
 ## GET `/api/events`
 
-Lista los eventos disponibles para cualquier rol autenticado o no autenticado. Event no tiene un campo de publicación, por lo que los eventos existentes se tratan como publicados.
+El endpoint es público. Por defecto devuelve solamente eventos `published`; si se envía `status`, permite solicitar explícitamente `draft`, `published`, `cancelled` o `finished`. También admite los filtros `category`, `location`, `dateFrom` y `dateTo`, además de `page` (1 por defecto), `limit` (10 por defecto) y `sort=date` (ascendente) o `sort=-date` (descendente). La respuesta incluye `payload.data`, `page`, `limit`, `total` y `totalPages`.
 
 **Respuesta:** HTTP `200`
 
 ```json
 {
   "status": "success",
-  "payload": []
+  "payload": { "data": [], "page": 1, "limit": 10, "total": 0, "totalPages": 0 }
 }
 ```
 
@@ -383,7 +386,7 @@ Los roles permitidos son `user`, `organizer` y `admin`; el registro público sie
 | Modificar/cancelar cualquier evento | No | No | Sí |
 | Ver todos los usuarios (`GET /api/users`) | No | No | Sí |
 
-Las rutas protegidas siguen el orden autenticación → autorización → controller. Los eventos guardan `createdBy`; el service exige que coincida con el usuario para organizers y permite al admin operar sobre cualquier evento. `PATCH /api/events/:id` solo actualiza `title`, `description` y `date`; `DELETE` cancela eliminando el documento.
+Las rutas protegidas siguen el orden autenticación → autorización → controller. `GET /api/users` requiere admin. Los eventos asocian `organizer` al usuario autenticado; no se acepta ese dato desde el body. El organizer opera solo sobre eventos propios y admin puede operar sobre cualquiera. Cancelar cambia el estado a `cancelled` y conserva el documento.
 
 401 significa que falta una sesión válida:
 
@@ -398,3 +401,11 @@ Las rutas protegidas siguen el orden autenticación → autorización → contro
 ```
 
 `GET /api/users` devuelve únicamente `id`, nombre, apellido, email y rol; nunca incluye contraseñas ni hashes.
+
+## Pre-entrega 6: gestión de eventos
+
+Un evento contiene `title`, `description`, `category`, `date`, `location`, `capacity`, `price`, `status` y `organizer`. `capacity` debe ser mayor que cero; `price` debe ser mayor o igual que cero y por defecto es `0`. Los estados admitidos son `draft`, `published`, `cancelled` y `finished`; los eventos nuevos comienzan como `draft`. La fecha debe ser válida y futura al crear o cambiar la fecha.
+
+`POST /api/events` recibe los campos del evento excepto `organizer` y asigna el organizador desde la sesión. `PUT /api/events/:id` modifica los campos editables; `PATCH /api/events/:id/status` recibe `{ "status": "published" }` (o uno de los otros estados permitidos). Los eventos `cancelled` no pueden volver a modificarse ni publicarse los que estén `finished`. La ruta P5 `PATCH /api/events/:id` sigue disponible como alias de actualización. `DELETE /api/events/:id` se conserva por compatibilidad y cancela mediante estado, sin borrar el documento.
+
+`GET /api/events/:id` responde 404 si el ID no es válido o no existe. Los filtros y la paginación de `GET /api/events` se aplican en base de datos. La colección de eventos de la base actual fue diagnosticada y contiene 0 documentos, por lo que no existen datos antiguos que requieran migración.

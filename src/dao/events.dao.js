@@ -1,6 +1,9 @@
 import Event from "../models/Event.js";
 
-const findAll = async () => Event.find().lean();
+const findAll = async ({ filter = {}, skip = 0, limit = 10, sort = 1 } = {}) =>
+  Event.find(filter).sort({ date: sort, _id: sort }).skip(skip).limit(limit).lean();
+
+const count = async (filter = {}) => Event.countDocuments(filter);
 
 const findById = async (id) => Event.findById(id);
 
@@ -12,12 +15,10 @@ const updateById = async (id, eventData) =>
     runValidators: true,
   });
 
-const deleteById = async (id) => Event.findByIdAndDelete(id);
-
 export default {
   findAll,
+  count,
   findById,
   create,
   updateById,
-  deleteById,
 };

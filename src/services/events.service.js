@@ -1,82 +1,135 @@
 import mongoose from "mongoose";
 import eventsRepository from "../repositories/events.repository.js";
 
-const permissionError = () => {
-  const error = new Error("No tenés permisos para realizar esta acción");
-  error.status = 403;
-  return error;
-};
+const statuses = ["draft", "published", "cancelled", "finished"];
+const fields = ["title", "description", "category", "date", "location", "capacity", "price"];
 
-const notFoundError = () => {
-  const error = new Error("Evento no encontrado");
-  error.status = 404;
-  return error;
-};
+const httpError = (status, message) => Object.assign(new Error(message), { status });
+const permissionError = () => httpError(403, "No tenés permisos para realizar esta acción");
+const notFoundError = () => httpError(404, "Evento no encontrado");
+const validationError = (message) => httpError(400, message);
 
-const toPublicEvent = ({ _id, title, description, date }) => ({
-  id: _id.toString(),
-  title,
-  description,
-  date,
+const toPublicEvent = (event) => ({
+  id: event._id.toString(),
+  title: event.title,
+  description: event.description,
+  category: event.category,
+  date: event.date,
+  location: event.location,
+  capacity: event.capacity,
+  price: event.price,
+  status: event.status,
+  organizer: event.organizer?.toString?.() ?? event.organizer,
 });
 
-const getEvents = async () => {
-  const events = await eventsRepository.findAllEvents();
-  return events.map(toPublicEvent);
+const parsePositiveInteger = (value, fallback, name) => {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) throw validationError(`${name} debe ser un entero positivo`);
+  return parsed;
+};
+
+const getEvents = async (query = {}) => {
+  const page = parsePositiveInteger(query.page, 1, "page");
+  const limit = parsePositiveInteger(query.limit, 10, "limit");
+  const sort = query.sort ?? "date";
+  if (!["date", "-date"].includes(sort)) throw validationError("sort debe ser date o -date");
+
+  const filter = {};
+  for (const field of ["status", "category", "location"]) {
+    if (query[field] !== undefined) {
+      const value = String(query[field]).trim();
+      if (!value) throw validationError(`${field} no puede estar vacío`);
+      if (field === "status" && !statuses.includes(value)) throw validationError("Estado de evento inválido");
+      const safeValue = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      filter[field] = field === "location" ? { $regex: safeValue, $options: "i" } : value;
+    }
+  }
+  if (query.status === undefined) filter.status = "published";
+
+  const dateRange = {};
+  for (const [key, operator] of [["dateFrom", "$gte"], ["dateTo", "$lte"]]) {
+    if (query[key] !== undefined) {
+      const date = new Date(query[key]);
+      if (Number.isNaN(date.getTime())) throw validationError(`${key} debe ser una fecha válida`);
+      dateRange[operator] = date;
+    }
+  }
+  if (dateRange.$gte && dateRange.$lte && dateRange.$gte > dateRange.$lte) {
+    throw validationError("dateFrom no puede ser posterior a dateTo");
+  }
+  if (Object.keys(dateRange).length) filter.date = dateRange;
+
+  const [events, total] = await Promise.all([
+    eventsRepository.findAllEvents({ filter, skip: (page - 1) * limit, limit, sort: sort === "date" ? 1 : -1 }),
+    eventsRepository.countEvents(filter),
+  ]);
+  return { data: events.map(toPublicEvent), page, limit, total, totalPages: Math.ceil(total / limit) };
+};
+
+const getEventById = async (id) => {
+  if (!mongoose.isValidObjectId(id)) throw notFoundError();
+  const event = await eventsRepository.findEventById(id);
+  if (!event) throw notFoundError();
+  return toPublicEvent(event);
+};
+
+const validateEventData = (data, { creating = false, existing = {} } = {}) => {
+  const values = { ...existing };
+  for (const field of fields) if (data[field] !== undefined) values[field] = data[field];
+  if (creating && values.price === undefined) values.price = 0;
+
+  for (const field of ["title", "description", "category", "location"]) {
+    if (typeof values[field] !== "string" || !values[field].trim()) throw validationError(`${field} es obligatorio`);
+    values[field] = values[field].trim();
+  }
+  const date = new Date(values.date);
+  if (!values.date || Number.isNaN(date.getTime())) throw validationError("date debe ser una fecha válida");
+  if (creating && date <= new Date()) throw validationError("La fecha del evento debe ser futura");
+  if (!creating && data.date !== undefined && date <= new Date()) throw validationError("La fecha del evento debe ser futura");
+  values.date = date;
+
+  if (typeof values.capacity !== "number" || !Number.isFinite(values.capacity) || values.capacity <= 0) {
+    throw validationError("capacity debe ser mayor que 0");
+  }
+  if (typeof values.price !== "number" || !Number.isFinite(values.price) || values.price < 0) {
+    throw validationError("price debe ser mayor o igual que 0");
+  }
+  return Object.fromEntries(fields.map((field) => [field, values[field]]));
 };
 
 const createEvent = async (eventData, user) => {
-  const event = await eventsRepository.createEvent({
-    title: eventData.title,
-    description: eventData.description,
-    date: eventData.date,
-    createdBy: user.id,
-  });
-
+  const data = validateEventData(eventData, { creating: true });
+  const event = await eventsRepository.createEvent({ ...data, organizer: user.id });
   return toPublicEvent(event);
 };
 
 const findEventForUpdate = async (id, user) => {
-  if (!mongoose.isValidObjectId(id)) {
-    throw notFoundError();
-  }
-
+  if (!mongoose.isValidObjectId(id)) throw notFoundError();
   const event = await eventsRepository.findEventById(id);
-
-  if (!event) {
-    throw notFoundError();
-  }
-
-  const isOwner = event.createdBy?.toString() === user.id;
-  if (user.role !== "admin" && !isOwner) {
-    throw permissionError();
-  }
-
+  if (!event) throw notFoundError();
+  const isOwner = event.organizer?.toString() === user.id;
+  if (user.role !== "admin" && !isOwner) throw permissionError();
   return event;
 };
 
 const updateEvent = async (id, changes, user) => {
-  await findEventForUpdate(id, user);
-
-  const eventData = {};
-  for (const field of ["title", "description", "date"]) {
-    if (changes[field] !== undefined) {
-      eventData[field] = changes[field];
-    }
-  }
-
+  const existing = await findEventForUpdate(id, user);
+  if (existing.status === "cancelled") throw validationError("No se puede modificar un evento cancelado");
+  const eventData = validateEventData(changes, { existing });
   const event = await eventsRepository.updateEvent(id, eventData);
   return toPublicEvent(event);
 };
 
-const cancelEvent = async (id, user) => {
-  await findEventForUpdate(id, user);
-  await eventsRepository.deleteEvent(id);
+const updateEventStatus = async (id, status, user) => {
+  const existing = await findEventForUpdate(id, user);
+  if (existing.status === "cancelled") throw validationError("No se puede modificar un evento cancelado");
+  if (!statuses.includes(status)) throw validationError("Estado de evento inválido");
+  if (status === "published" && existing.status === "finished") throw validationError("No se puede publicar un evento finalizado");
+  const event = await eventsRepository.updateEvent(id, { status });
+  return toPublicEvent(event);
 };
 
-export default {
-  getEvents,
-  createEvent,
-  updateEvent,
-  cancelEvent,
-};
+const cancelEvent = async (id, user) => updateEventStatus(id, "cancelled", user);
+
+export default { getEvents, getEventById, createEvent, updateEvent, updateEventStatus, cancelEvent };
