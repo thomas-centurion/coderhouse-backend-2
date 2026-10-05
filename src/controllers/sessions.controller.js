@@ -1,5 +1,5 @@
-import sessionsService from "../services/sessions.service.js";
 import env from "../config/env.js";
+import { generateToken } from "../utils/jwt.js";
 
 const getSessions = (req, res) => {
   res.status(200).json({
@@ -8,25 +8,19 @@ const getSessions = (req, res) => {
   });
 };
 
-const register = async (req, res, next) => {
-  try {
-    const user = await sessionsService.registerUser(req.body);
+const register = (req, res) => {
+  const { _id, first_name, last_name, email, role } = req.user;
 
-    const userResponse = {
-      id: user._id,
-      first_name: user.first_name,
-      last_name: user.last_name,
-      email: user.email,
-      role: user.role,
-    };
-
-    res.status(201).json({
-      status: "success",
-      payload: userResponse,
-    });
-  } catch (error) {
-    next(error);
-  }
+  res.status(201).json({
+    status: "success",
+    payload: {
+      id: _id,
+      first_name,
+      last_name,
+      email,
+      role,
+    },
+  });
 };
 
 const cookieOptions = {
@@ -36,17 +30,18 @@ const cookieOptions = {
   secure: env.NODE_ENV === "production",
 };
 
-const login = async (req, res, next) => {
-  try {
-    const token = await sessionsService.loginUser(req.body);
-    res.cookie("currentUser", token, cookieOptions);
-    res.status(200).json({
-      status: "success",
-      message: "Login correcto",
-    });
-  } catch (error) {
-    next(error);
-  }
+const login = (req, res) => {
+  const token = generateToken({
+    id: req.user._id.toString(),
+    email: req.user.email,
+    role: req.user.role,
+  });
+
+  res.cookie("currentUser", token, cookieOptions);
+  res.status(200).json({
+    status: "success",
+    message: "Login correcto",
+  });
 };
 
 const current = (req, res) => {

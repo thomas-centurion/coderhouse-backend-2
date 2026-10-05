@@ -1,6 +1,5 @@
 import usersRepository from "../repositories/users.repository.js";
 import { comparePassword, hashPassword } from "../utils/hash.js";
-import { generateToken } from "../utils/jwt.js";
 
 const registerUser = async ({
   first_name,
@@ -66,11 +65,7 @@ const loginUser = async ({ email, password } = {}) => {
     throw error;
   }
 
-  return generateToken({
-    id: user._id.toString(),
-    email: user.email,
-    role: user.role,
-  });
+  return user;
 };
 
 export default {

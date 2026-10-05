@@ -15,6 +15,7 @@ El proyecto consiste en una API REST para gestionar usuarios y eventos, que se i
 - dotenv
 - cookie-parser
 - jsonwebtoken
+- passport
 - MongoDB
 - Mongoose
 - bcrypt
@@ -61,6 +62,7 @@ Por defecto, el servidor utiliza el puerto `3000`. Al iniciar correctamente, est
 src/
 ├── config/
 │   ├── database.js
+│   ├── passport.config.js
 │   └── env.js
 ├── controllers/
 │   ├── events.controller.js
@@ -69,7 +71,6 @@ src/
 ├── dao/
 │   └── users.dao.js
 ├── middlewares/
-│   ├── auth.middleware.js
 │   ├── error.middleware.js
 │   └── not-found.middleware.js
 ├── models/
@@ -347,3 +348,13 @@ La cookie `currentUser` utiliza:
 `/current` valida el token sin consultar MongoDB.
 
 Las variables de entorno utilizadas son `PORT`, `MONGO_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN` y `NODE_ENV`. El secreto JWT debe mantenerse privado y `.env` no debe subirse al repositorio.
+
+## Pre-entrega 4: autenticación con Passport
+
+Passport se inicializa en `src/app.js`; las estrategias se registran en `src/config/passport.config.js`, separadas de la configuración de Express:
+
+- `register` delega el alta al service, que valida los datos, normaliza el email, evita duplicados y guarda el hash con bcrypt.
+- `login` delega la búsqueda y comparación de contraseña al service. El controller genera el JWT y establece `currentUser` con las opciones de cookie de P3.
+- `current` verifica el JWT de la cookie y deja su payload validado en `req.user`; el controller responde con `id`, `email` y `role`.
+
+Las rutas públicas conservan sus paths y respuestas. Logout no utiliza Passport y continúa borrando la cookie. Para agregar proveedores como Google o GitHub, se registra la estrategia correspondiente en `passport.config.js` sin cambiar `app.js`. El service conserva la lógica de negocio y acceso mediante repository; los controllers manejan las respuestas HTTP y la cookie.
