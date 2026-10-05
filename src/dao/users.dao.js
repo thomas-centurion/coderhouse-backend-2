@@ -8,7 +8,12 @@ const findByEmail = async (email) => {
   return await User.findOne({ email });
 };
 
+const findAll = async () => {
+  return await User.find().select("-password").lean();
+};
+
 export default {
   create,
   findByEmail,
+  findAll,
 };

@@ -67,23 +67,31 @@ src/
 ├── controllers/
 │   ├── events.controller.js
 │   ├── health.controller.js
-│   └── sessions.controller.js
+│   ├── sessions.controller.js
+│   └── users.controller.js
 ├── dao/
+│   ├── events.dao.js
 │   └── users.dao.js
 ├── middlewares/
+│   ├── auth.middleware.js
+│   ├── authorize.middleware.js
 │   ├── error.middleware.js
 │   └── not-found.middleware.js
 ├── models/
 │   ├── Event.js
 │   └── User.js
 ├── repositories/
+│   ├── events.repository.js
 │   └── users.repository.js
 ├── routes/
 │   ├── events.router.js
 │   ├── health.router.js
-│   └── sessions.router.js
+│   ├── sessions.router.js
+│   └── users.router.js
 ├── services/
-│   └── sessions.service.js
+│   ├── events.service.js
+│   ├── sessions.service.js
+│   └── users.service.js
 ├── utils/
 │   ├── hash.js
 │   └── jwt.js
@@ -97,11 +105,15 @@ src/
 |---|---|---|
 | GET | `/api/health` | Comprueba que el servidor esté activo |
 | GET | `/api/events` | Obtiene la lista de eventos |
+| POST | `/api/events` | Crea un evento (organizer/admin) |
+| PATCH | `/api/events/:id` | Modifica un evento propio (organizer) o cualquiera (admin) |
+| DELETE | `/api/events/:id` | Cancela un evento propio (organizer) o cualquiera (admin) |
 | GET | `/api/sessions` | Ruta inicial para el recurso de sesiones |
 | POST | `/api/sessions/register` | Registra un nuevo usuario |
 | POST | `/api/sessions/login` | Inicia sesión y establece la cookie de autenticación |
 | GET | `/api/sessions/current` | Devuelve los datos públicos del usuario autenticado |
 | POST | `/api/sessions/logout` | Cierra la sesión y elimina la cookie |
+| GET | `/api/users` | Lista usuarios (solo admin; sin contraseñas) |
 
 ## GET `/api/health`
 
@@ -118,7 +130,7 @@ Comprueba que el servidor se encuentre activo.
 
 ## GET `/api/events`
 
-Obtiene la lista de eventos. En esta etapa puede devolver una lista vacía.
+Lista los eventos disponibles para cualquier rol autenticado o no autenticado. Event no tiene un campo de publicación, por lo que los eventos existentes se tratan como publicados.
 
 **Respuesta:** HTTP `200`
 
@@ -358,3 +370,31 @@ Passport se inicializa en `src/app.js`; las estrategias se registran en `src/con
 - `current` verifica el JWT de la cookie y deja su payload validado en `req.user`; el controller responde con `id`, `email` y `role`.
 
 Las rutas públicas conservan sus paths y respuestas. Logout no utiliza Passport y continúa borrando la cookie. Para agregar proveedores como Google o GitHub, se registra la estrategia correspondiente en `passport.config.js` sin cambiar `app.js`. El service conserva la lógica de negocio y acceso mediante repository; los controllers manejan las respuestas HTTP y la cookie.
+
+## Pre-entrega 5: autorización por roles
+
+Los roles permitidos son `user`, `organizer` y `admin`; el registro público siempre asigna `user`. La autenticación valida `currentUser` con Passport y produce 401 si no hay sesión válida. Luego `authorize.middleware.js` valida permisos y devuelve 403 si el rol no está habilitado.
+
+| Acción | user | organizer | admin |
+|---|:---:|:---:|:---:|
+| Consultar eventos publicados | Sí | Sí | Sí |
+| Crear eventos | No | Sí | Sí |
+| Modificar/cancelar eventos propios | No | Sí | Sí |
+| Modificar/cancelar cualquier evento | No | No | Sí |
+| Ver todos los usuarios (`GET /api/users`) | No | No | Sí |
+
+Las rutas protegidas siguen el orden autenticación → autorización → controller. Los eventos guardan `createdBy`; el service exige que coincida con el usuario para organizers y permite al admin operar sobre cualquier evento. `PATCH /api/events/:id` solo actualiza `title`, `description` y `date`; `DELETE` cancela eliminando el documento.
+
+401 significa que falta una sesión válida:
+
+```json
+{ "status": "error", "message": "No autenticado" }
+```
+
+403 significa que la sesión es válida pero el usuario no tiene permisos:
+
+```json
+{ "status": "error", "message": "No tenés permisos para realizar esta acción" }
+```
+
+`GET /api/users` devuelve únicamente `id`, nombre, apellido, email y rol; nunca incluye contraseñas ni hashes.

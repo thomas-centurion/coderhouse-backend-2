@@ -8,7 +8,12 @@ const findUserByEmail = async (email) => {
   return await usersDao.findByEmail(email);
 };
 
+const findAllUsers = async () => {
+  return await usersDao.findAll();
+};
+
 export default {
   createUser,
   findUserByEmail,
+  findAllUsers,
 };
