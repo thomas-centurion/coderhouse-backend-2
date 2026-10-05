@@ -45,6 +45,7 @@ JWT_EXPIRES_IN=1h
 - `MONGO_URL`: URL de conexión a MongoDB.
 - `JWT_SECRET`: secreto utilizado para firmar y verificar JWT.
 - `JWT_EXPIRES_IN`: tiempo de validez del JWT, por ejemplo `1h`.
+- `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS` y `MAIL_FROM`: configuración SMTP para los emails de confirmación de tickets.
 
 El archivo `.env` contiene información sensible y no debe subirse al repositorio.
 
@@ -62,6 +63,7 @@ Por defecto, el servidor utiliza el puerto `3000`. Al iniciar correctamente, est
 src/
 ├── config/
 │   ├── database.js
+│   ├── mailer.js
 │   ├── passport.config.js
 │   └── env.js
 ├── controllers/
@@ -71,6 +73,7 @@ src/
 │   └── users.controller.js
 ├── dao/
 │   ├── events.dao.js
+│   ├── tickets.dao.js
 │   └── users.dao.js
 ├── middlewares/
 │   ├── auth.middleware.js
@@ -79,18 +82,23 @@ src/
 │   └── not-found.middleware.js
 ├── models/
 │   ├── Event.js
+│   ├── Ticket.js
 │   └── User.js
 ├── repositories/
 │   ├── events.repository.js
+│   ├── tickets.repository.js
 │   └── users.repository.js
 ├── routes/
 │   ├── events.router.js
 │   ├── health.router.js
 │   ├── sessions.router.js
+│   ├── tickets.router.js
 │   └── users.router.js
 ├── services/
 │   ├── events.service.js
+│   ├── email.service.js
 │   ├── sessions.service.js
+│   ├── tickets.service.js
 │   └── users.service.js
 ├── utils/
 │   ├── hash.js
@@ -111,6 +119,10 @@ src/
 | PATCH | `/api/events/:id` | Modifica un evento propio (organizer) o cualquiera (admin) |
 | PATCH | `/api/events/:id/status` | Cambia el estado del evento (organizer/admin propietario o admin) |
 | DELETE | `/api/events/:id` | Cancela un evento propio (organizer) o cualquiera (admin) |
+| POST | `/api/events/:eid/tickets` | Crea una inscripción (autenticado) |
+| GET | `/api/tickets/my-tickets` | Lista las inscripciones propias (autenticado) |
+| GET | `/api/events/:eid/tickets` | Lista tickets del evento (organizer propietario o admin) |
+| PATCH | `/api/tickets/:tid/cancel` | Cancela un ticket propio o cualquiera como admin |
 | GET | `/api/sessions` | Ruta inicial para el recurso de sesiones |
 | POST | `/api/sessions/register` | Registra un nuevo usuario |
 | POST | `/api/sessions/login` | Inicia sesión y establece la cookie de autenticación |
@@ -409,3 +421,16 @@ Un evento contiene `title`, `description`, `category`, `date`, `location`, `capa
 `POST /api/events` recibe los campos del evento excepto `organizer` y asigna el organizador desde la sesión. `PUT /api/events/:id` modifica los campos editables; `PATCH /api/events/:id/status` recibe `{ "status": "published" }` (o uno de los otros estados permitidos). Los eventos `cancelled` no pueden volver a modificarse ni publicarse los que estén `finished`. La ruta P5 `PATCH /api/events/:id` sigue disponible como alias de actualización. `DELETE /api/events/:id` se conserva por compatibilidad y cancela mediante estado, sin borrar el documento.
 
 `GET /api/events/:id` responde 404 si el ID no es válido o no existe. Los filtros y la paginación de `GET /api/events` se aplican en base de datos. La colección de eventos de la base actual fue diagnosticada y contiene 0 documentos, por lo que no existen datos antiguos que requieran migración.
+
+## Pre-entrega 7: tickets e inscripciones
+
+`Ticket` almacena referencias ObjectId a `User` y `Event`, `status` (`confirmed`, `pending` o `cancelled`), `quantity`, `reservationCode`, `createdAt` y `cancelledAt`. Una inscripción exitosa se confirma directamente. El usuario siempre se toma de la sesión autenticada.
+
+- `POST /api/events/:eid/tickets` requiere autenticación y un body como `{ "quantity": 2 }`. Solo admite eventos existentes en estado `published` y una cantidad finita mayor que cero.
+- Los cupos ocupados se calculan sumando `quantity` de los tickets `confirmed` y `pending`. No se cuentan tickets `cancelled`; si no alcanzan los cupos de `Event.capacity`, responde con un error de conflicto.
+- Un usuario no puede tener más de un ticket activo para el mismo evento. Los tickets cancelados se conservan y permiten una nueva inscripción.
+- `GET /api/tickets/my-tickets` requiere autenticación y devuelve solo los tickets del usuario, con `title`, `date` y `location` del evento.
+- `GET /api/events/:eid/tickets` requiere autenticación; el service permite al organizer propietario o a admin. No incluye datos personales de compradores.
+- `PATCH /api/tickets/:tid/cancel` requiere autenticación. El propietario o admin puede cancelar una sola vez; se registra `cancelledAt` y el ticket no se elimina.
+
+Al confirmar, la API intenta enviar un email mediante Nodemailer. Si el envío falla, la inscripción confirmada se conserva y la solicitud sigue respondiendo exitosamente; el servidor registra un mensaje genérico sin credenciales ni detalles sensibles. Para habilitar el correo configura `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS` y `MAIL_FROM` en `.env` tomando `.env.example` como referencia. No subas `.env` ni sus credenciales.
