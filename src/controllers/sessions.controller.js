@@ -1,5 +1,6 @@
 import env from "../config/env.js";
-import { generateToken } from "../utils/jwt.js";
+import sessionsService from "../services/sessions.service.js";
+import { toCurrentUserDTO, toUserDTO } from "../dto/user.dto.js";
 
 const getSessions = (req, res) => {
   res.status(200).json({
@@ -9,17 +10,9 @@ const getSessions = (req, res) => {
 };
 
 const register = (req, res) => {
-  const { _id, first_name, last_name, email, role } = req.user;
-
   res.status(201).json({
     status: "success",
-    payload: {
-      id: _id,
-      first_name,
-      last_name,
-      email,
-      role,
-    },
+    payload: toUserDTO(req.user),
   });
 };
 
@@ -31,11 +24,7 @@ const cookieOptions = {
 };
 
 const login = (req, res) => {
-  const token = generateToken({
-    id: req.user._id.toString(),
-    email: req.user.email,
-    role: req.user.role,
-  });
+  const token = sessionsService.createSessionToken(req.user);
 
   res.cookie("currentUser", token, cookieOptions);
   res.status(200).json({
@@ -45,10 +34,9 @@ const login = (req, res) => {
 };
 
 const current = (req, res) => {
-  const { id, email, role } = req.user;
   res.status(200).json({
     status: "success",
-    payload: { id, email, role },
+    payload: toCurrentUserDTO(req.user),
   });
 };
 

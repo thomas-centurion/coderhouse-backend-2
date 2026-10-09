@@ -1,19 +1,26 @@
+import mongoose from "mongoose";
 import User from "../models/User.js";
 
-const create = async (userData) => {
-  return await User.create(userData);
-};
+const find = async (filter = {}, { projection } = {}) => User.find(filter, projection).lean();
 
-const findByEmail = async (email) => {
-  return await User.findOne({ email });
-};
+const findOne = async (filter) => User.findOne(filter);
 
-const findAll = async () => {
-  return await User.find().select("-password").lean();
-};
+const findById = async (id) => (mongoose.isValidObjectId(id) ? User.findById(id) : null);
+
+const create = async (userData) => User.create(userData);
+
+const update = async (id, userData) =>
+  mongoose.isValidObjectId(id)
+    ? User.findByIdAndUpdate(id, userData, { returnDocument: "after", runValidators: true })
+    : null;
+
+const count = async (filter = {}) => User.countDocuments(filter);
 
 export default {
+  find,
+  findOne,
+  findById,
   create,
-  findByEmail,
-  findAll,
+  update,
+  count,
 };

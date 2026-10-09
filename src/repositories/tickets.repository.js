@@ -1,28 +1,39 @@
 import ticketsDao from "../dao/tickets.dao.js";
 
+export const ACTIVE_TICKET_STATUSES = ["confirmed", "pending"];
+
+const activeFilter = { status: { $in: ACTIVE_TICKET_STATUSES } };
+
 const createTicket = async (ticketData) => ticketsDao.create(ticketData);
-
-const findActiveTicket = async (userId, eventId) =>
-  ticketsDao.findActiveByUserAndEvent(userId, eventId);
-
-const sumActiveQuantityForEvent = async (eventId) =>
-  ticketsDao.sumActiveQuantityForEvent(eventId);
-
-const findTicketsByUser = async (userId) => ticketsDao.findAllByUser(userId);
-
-const findTicketsByEvent = async (eventId) => ticketsDao.findAllByEvent(eventId);
 
 const findTicketById = async (id) => ticketsDao.findById(id);
 
-const cancelActiveTicket = async (id, cancelledAt) =>
-  ticketsDao.cancelActiveById(id, cancelledAt);
+const hasActiveTicket = async (userId, eventId) =>
+  ticketsDao.exists({ user: userId, event: eventId, ...activeFilter });
+
+const countActiveTickets = async (eventId) =>
+  ticketsDao.sumQuantity({ event: eventId, ...activeFilter });
+
+const findTicketsByUser = async (userId) =>
+  ticketsDao.find(
+    { user: userId },
+    { populate: [{ path: "event", select: "title date location" }] },
+  );
+
+const findTicketsByEvent = async (eventId) => ticketsDao.find({ event: eventId });
+
+const cancelTicket = async (id, cancelledAt = new Date()) =>
+  ticketsDao.updateOne(
+    { _id: id, ...activeFilter },
+    { $set: { status: "cancelled", cancelledAt } },
+  );
 
 export default {
   createTicket,
-  findActiveTicket,
-  sumActiveQuantityForEvent,
+  findTicketById,
+  hasActiveTicket,
+  countActiveTickets,
   findTicketsByUser,
   findTicketsByEvent,
-  findTicketById,
-  cancelActiveTicket,
+  cancelTicket,
 };

@@ -1,5 +1,9 @@
 import usersRepository from "../repositories/users.repository.js";
 import { comparePassword, hashPassword } from "../utils/hash.js";
+import { generateToken } from "../utils/jwt.js";
+import { badRequest, conflict, unauthorized } from "../utils/errors.js";
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const registerUser = async ({
   first_name,
@@ -7,68 +11,60 @@ const registerUser = async ({
   email,
   password,
 }) => {
-  const validationError = (message) => {
-    const error = new Error(message);
-    error.status = 400;
-    return error;
-  };
-
   if (!first_name || !last_name || !email || !password) {
-    throw validationError("Faltan campos obligatorios");
+    throw badRequest("Faltan campos obligatorios");
   }
 
   const normalizedEmail = email.trim().toLowerCase();
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
   if (!emailRegex.test(normalizedEmail)) {
-    throw validationError("El email no es válido");
+    throw badRequest("El email no es válido");
   }
 
   if (password.length < 6) {
-    throw validationError("La contraseña debe tener al menos 6 caracteres");
+    throw badRequest("La contraseña debe tener al menos 6 caracteres");
   }
 
-  const existingUser = await usersRepository.findUserByEmail(normalizedEmail);
+  const existingUser = await usersRepository.findByEmail(normalizedEmail);
 
   if (existingUser) {
-    const error = new Error("El email ya está registrado");
-    error.status = 409;
-    throw error;
+    throw conflict("El email ya está registrado");
   }
 
   const hashedPassword = await hashPassword(password);
 
-  const user = await usersRepository.createUser({
+  return usersRepository.createUser({
     first_name,
     last_name,
     email: normalizedEmail,
     password: hashedPassword,
   });
-
-  return user;
 };
 
 const loginUser = async ({ email, password } = {}) => {
   if (!email || !password) {
-    const error = new Error("Email y contraseña son obligatorios");
-    error.status = 400;
-    throw error;
+    throw badRequest("Email y contraseña son obligatorios");
   }
 
   const normalizedEmail = email.trim().toLowerCase();
-  const user = await usersRepository.findUserByEmail(normalizedEmail);
+  const user = await usersRepository.findByEmail(normalizedEmail);
 
   if (!user || !(await comparePassword(password, user.password))) {
-    const error = new Error("Credenciales inválidas");
-    error.status = 401;
-    throw error;
+    throw unauthorized("Credenciales inválidas");
   }
 
   return user;
 };
 
+const createSessionToken = (user) =>
+  generateToken({
+    id: user._id.toString(),
+    email: user.email,
+    role: user.role,
+  });
+
 export default {
   registerUser,
   loginUser,
+  createSessionToken,
 };

@@ -1,19 +1,16 @@
 import usersDao from "../dao/users.dao.js";
 
-const createUser = async (userData) => {
-  return await usersDao.create(userData);
-};
+const findByEmail = async (email) => usersDao.findOne({ email });
 
-const findUserByEmail = async (email) => {
-  return await usersDao.findByEmail(email);
-};
+const findUserById = async (id) => usersDao.findById(id);
 
-const findAllUsers = async () => {
-  return await usersDao.findAll();
-};
+const findAllUsers = async () => usersDao.find({}, { projection: { password: 0 } });
+
+const createUser = async (userData) => usersDao.create(userData);
 
 export default {
-  createUser,
-  findUserByEmail,
+  findByEmail,
+  findUserById,
   findAllUsers,
+  createUser,
 };

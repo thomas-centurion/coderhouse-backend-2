@@ -1,6 +1,7 @@
 import passport from "passport";
 import sessionsService from "../services/sessions.service.js";
 import { verifyToken } from "../utils/jwt.js";
+import { unauthorized } from "../utils/errors.js";
 
 const createStrategy = (name, authenticate) => ({
   name,
@@ -12,11 +13,7 @@ const createStrategy = (name, authenticate) => ({
   },
 });
 
-const authenticationError = () => {
-  const error = new Error("No autenticado");
-  error.status = 401;
-  return error;
-};
+const authenticationError = () => unauthorized();
 
 passport.use(
   "register",

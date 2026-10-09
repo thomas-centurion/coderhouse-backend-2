@@ -1,15 +1,9 @@
 import usersRepository from "../repositories/users.repository.js";
+import { toUserDTO } from "../dto/user.dto.js";
 
 const getAllUsers = async () => {
   const users = await usersRepository.findAllUsers();
-
-  return users.map(({ _id, first_name, last_name, email, role }) => ({
-    id: _id.toString(),
-    first_name,
-    last_name,
-    email,
-    role,
-  }));
+  return users.map(toUserDTO);
 };
 
 export default {

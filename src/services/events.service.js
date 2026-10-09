@@ -1,26 +1,13 @@
-import mongoose from "mongoose";
 import eventsRepository from "../repositories/events.repository.js";
+import { toEventDTO } from "../dto/event.dto.js";
+import { badRequest, forbidden, notFound } from "../utils/errors.js";
 
 const statuses = ["draft", "published", "cancelled", "finished"];
 const fields = ["title", "description", "category", "date", "location", "capacity", "price"];
 
-const httpError = (status, message) => Object.assign(new Error(message), { status });
-const permissionError = () => httpError(403, "No tenés permisos para realizar esta acción");
-const notFoundError = () => httpError(404, "Evento no encontrado");
-const validationError = (message) => httpError(400, message);
-
-const toPublicEvent = (event) => ({
-  id: event._id.toString(),
-  title: event.title,
-  description: event.description,
-  category: event.category,
-  date: event.date,
-  location: event.location,
-  capacity: event.capacity,
-  price: event.price,
-  status: event.status,
-  organizer: event.organizer?.toString?.() ?? event.organizer,
-});
+const permissionError = () => forbidden();
+const notFoundError = () => notFound("Evento no encontrado");
+const validationError = (message) => badRequest(message);
 
 const parsePositiveInteger = (value, fallback, name) => {
   if (value === undefined) return fallback;
@@ -61,21 +48,20 @@ const getEvents = async (query = {}) => {
   if (Object.keys(dateRange).length) filter.date = dateRange;
 
   const [events, total] = await Promise.all([
-    eventsRepository.findAllEvents({ filter, skip: (page - 1) * limit, limit, sort: sort === "date" ? 1 : -1 }),
+    eventsRepository.findEvents(filter, { skip: (page - 1) * limit, limit, sort: sort === "date" ? 1 : -1 }),
     eventsRepository.countEvents(filter),
   ]);
-  return { data: events.map(toPublicEvent), page, limit, total, totalPages: Math.ceil(total / limit) };
+  return { data: events.map(toEventDTO), page, limit, total, totalPages: Math.ceil(total / limit) };
 };
 
 const getEventById = async (id) => {
-  if (!mongoose.isValidObjectId(id)) throw notFoundError();
   const event = await eventsRepository.findEventById(id);
   if (!event) throw notFoundError();
-  return toPublicEvent(event);
+  return toEventDTO(event);
 };
 
 const validateEventData = (data, { creating = false, existing = {} } = {}) => {
-  const values = { ...existing };
+  const values = { ...(existing.toObject?.() ?? existing) };
   for (const field of fields) if (data[field] !== undefined) values[field] = data[field];
   if (creating && values.price === undefined) values.price = 0;
 
@@ -101,11 +87,10 @@ const validateEventData = (data, { creating = false, existing = {} } = {}) => {
 const createEvent = async (eventData, user) => {
   const data = validateEventData(eventData, { creating: true });
   const event = await eventsRepository.createEvent({ ...data, organizer: user.id });
-  return toPublicEvent(event);
+  return toEventDTO(event);
 };
 
 const findEventForUpdate = async (id, user) => {
-  if (!mongoose.isValidObjectId(id)) throw notFoundError();
   const event = await eventsRepository.findEventById(id);
   if (!event) throw notFoundError();
   const isOwner = event.organizer?.toString() === user.id;
@@ -118,7 +103,7 @@ const updateEvent = async (id, changes, user) => {
   if (existing.status === "cancelled") throw validationError("No se puede modificar un evento cancelado");
   const eventData = validateEventData(changes, { existing });
   const event = await eventsRepository.updateEvent(id, eventData);
-  return toPublicEvent(event);
+  return toEventDTO(event);
 };
 
 const updateEventStatus = async (id, status, user) => {
@@ -126,8 +111,8 @@ const updateEventStatus = async (id, status, user) => {
   if (existing.status === "cancelled") throw validationError("No se puede modificar un evento cancelado");
   if (!statuses.includes(status)) throw validationError("Estado de evento inválido");
   if (status === "published" && existing.status === "finished") throw validationError("No se puede publicar un evento finalizado");
-  const event = await eventsRepository.updateEvent(id, { status });
-  return toPublicEvent(event);
+  const event = await eventsRepository.updateEventStatus(id, status);
+  return toEventDTO(event);
 };
 
 const cancelEvent = async (id, user) => updateEventStatus(id, "cancelled", user);

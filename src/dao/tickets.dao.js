@@ -1,54 +1,38 @@
+import mongoose from "mongoose";
 import Ticket from "../models/Ticket.js";
 
-const activeStatuses = ["confirmed", "pending"];
+const find = async (filter = {}, { sort = { createdAt: -1 }, populate = [] } = {}) =>
+  Ticket.find(filter).sort(sort).populate(populate).lean();
+
+const findOne = async (filter) => Ticket.findOne(filter);
+
+const findById = async (id) => (mongoose.isValidObjectId(id) ? Ticket.findById(id) : null);
+
+const exists = async (filter) => Ticket.exists(filter);
 
 const create = async (ticketData) => Ticket.create(ticketData);
 
-const findActiveByUserAndEvent = async (userId, eventId) =>
-  Ticket.exists({
-    user: userId,
-    event: eventId,
-    status: { $in: activeStatuses },
-  });
+const updateOne = async (filter, ticketData) =>
+  Ticket.findOneAndUpdate(filter, ticketData, { returnDocument: "after", runValidators: true });
 
-const sumActiveQuantityForEvent = async (eventId) => {
+const count = async (filter = {}) => Ticket.countDocuments(filter);
+
+const sumQuantity = async (filter = {}) => {
   const [result] = await Ticket.aggregate([
-    {
-      $match: {
-        event: eventId,
-        status: { $in: activeStatuses },
-      },
-    },
+    { $match: filter },
     { $group: { _id: null, quantity: { $sum: "$quantity" } } },
   ]);
 
   return result?.quantity ?? 0;
 };
 
-const findAllByUser = async (userId) =>
-  Ticket.find({ user: userId })
-    .sort({ createdAt: -1 })
-    .populate({ path: "event", select: "title date location" })
-    .lean();
-
-const findAllByEvent = async (eventId) =>
-  Ticket.find({ event: eventId }).sort({ createdAt: -1 }).lean();
-
-const findById = async (id) => Ticket.findById(id);
-
-const cancelActiveById = async (id, cancelledAt) =>
-  Ticket.findOneAndUpdate(
-    { _id: id, status: { $in: activeStatuses } },
-    { $set: { status: "cancelled", cancelledAt } },
-    { new: true, runValidators: true },
-  );
-
 export default {
-  create,
-  findActiveByUserAndEvent,
-  sumActiveQuantityForEvent,
-  findAllByUser,
-  findAllByEvent,
+  find,
+  findOne,
   findById,
-  cancelActiveById,
+  exists,
+  create,
+  updateOne,
+  count,
+  sumQuantity,
 };

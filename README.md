@@ -70,11 +70,17 @@ src/
 │   ├── events.controller.js
 │   ├── health.controller.js
 │   ├── sessions.controller.js
+│   ├── tickets.controller.js
 │   └── users.controller.js
 ├── dao/
 │   ├── events.dao.js
 │   ├── tickets.dao.js
 │   └── users.dao.js
+├── dto/
+│   ├── dto.utils.js
+│   ├── event.dto.js
+│   ├── ticket.dto.js
+│   └── user.dto.js
 ├── middlewares/
 │   ├── auth.middleware.js
 │   ├── authorize.middleware.js
@@ -101,6 +107,7 @@ src/
 │   ├── tickets.service.js
 │   └── users.service.js
 ├── utils/
+│   ├── errors.js
 │   ├── hash.js
 │   └── jwt.js
 ├── app.js
@@ -239,23 +246,28 @@ Un email inválido responde HTTP `400`. Un email ya registrado responde HTTP `40
 
 ## Arquitectura
 
-El proyecto utiliza una arquitectura por capas:
+El proyecto utiliza una arquitectura por capas. Cada capa solo conoce a la inmediatamente inferior:
 
 ```text
-Route → Controller → Service → Repository → DAO → Model → MongoDB
+Request → Route → Middlewares → Controller → Service → Repository → DAO → Model (Mongoose) → MongoDB
+                                    ↑            │
+                                    └─── DTO ────┘  (la respuesta vuelve filtrada)
 ```
 
-- **Routes:** definen los endpoints y derivan las solicitudes al controller.
-- **Controllers:** gestionan las solicitudes y respuestas HTTP.
-- **Services:** contienen la lógica de negocio.
-- **Repositories:** desacoplan la lógica de negocio del acceso a datos.
-- **DAO:** realizan las operaciones sobre los modelos.
-- **Models:** representan los documentos de MongoDB mediante Mongoose.
-- **Middlewares:** gestionan autenticación, errores y rutas inexistentes.
-- **Utils:** contienen funciones reutilizables como hash y JWT.
-- **Config:** centraliza variables de entorno y conexión a MongoDB.
+| Capa | Carpeta | Responsabilidad | Puede importar |
+|---|---|---|---|
+| Routes | `src/routes` | Definen método + path y encadenan autenticación → autorización → controller. | Controllers, middlewares |
+| Controllers | `src/controllers` | Solo coordinan request/response: extraen `body`, `params`, `query` y `req.user`, llaman al service y responden con el código HTTP. No calculan cupos, no validan estados ni importan modelos. Los errores se derivan con `next(error)`. | Services, DTO |
+| Services | `src/services` | Toda la lógica de negocio: validación de datos, cupos, estados de eventos y tickets, duplicados, permisos sobre recursos propios (organizer dueño / admin), hash de contraseñas, generación del JWT y envío de email. Devuelven DTOs. | Repositories, DTO, utils |
+| Repositories | `src/repositories` | Métodos orientados al dominio (`findByEmail`, `hasActiveTicket`, `countActiveTickets`, `cancelTicket`, `updateEventStatus`, ...). Arman los filtros de negocio y delegan en el DAO. No importan modelos. | DAO |
+| DAO | `src/dao` | Acceso a datos genérico (`find`, `findOne`, `findById`, `create`, `update`, `count`, ...). **Son los únicos archivos que importan modelos de Mongoose.** Un ID con formato inválido se trata como inexistente (devuelve `null`). | Models |
+| Models | `src/models` | Esquemas de Mongoose de `User`, `Event` y `Ticket`. | Mongoose |
+| DTO | `src/dto` | Definen qué campos salen en cada respuesta: usuario (`toUserDTO`, `toCurrentUserDTO`), evento (`toEventDTO`) y ticket (`toTicketDTO`, `toEventTicketDTO`). Nunca incluyen `password`; si una relación viene con `populate`, también se filtra. | — |
+| Middlewares | `src/middlewares` | Autenticación (Passport + JWT en cookie), autorización por rol, 404 de rutas y manejo centralizado de errores. | utils |
+| Utils | `src/utils` | Hash (bcrypt), JWT y errores HTTP (`AppError` y helpers `badRequest`, `unauthorized`, `forbidden`, `notFound`, `conflict`). | — |
+| Config | `src/config` | Variables de entorno, conexión a MongoDB, transporte de email y estrategias de Passport. | Services, utils |
 
-El modelo `User` define `first_name`, `last_name`, `email`, `password` y `role`. El modelo `Event` representa la estructura inicial de eventos con `title`, `description` y `date`.
+El modelo `User` define `first_name`, `last_name`, `email`, `password` y `role`. Los modelos `Event` y `Ticket` se describen en las secciones de las pre-entregas 6 y 7.
 
 La ruta de health delega la respuesta en `health.controller.js`. Las rutas inexistentes reciben una respuesta JSON 404 mediante `not-found.middleware.js`, registrado después de las rutas y antes del middleware global de errores.
 
@@ -434,3 +446,64 @@ Un evento contiene `title`, `description`, `category`, `date`, `location`, `capa
 - `PATCH /api/tickets/:tid/cancel` requiere autenticación. El propietario o admin puede cancelar una sola vez; se registra `cancelledAt` y el ticket no se elimina.
 
 Al confirmar, la API intenta enviar un email mediante Nodemailer. Si el envío falla, la inscripción confirmada se conserva y la solicitud sigue respondiendo exitosamente; el servidor registra un mensaje genérico sin credenciales ni detalles sensibles. Para habilitar el correo configura `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS` y `MAIL_FROM` en `.env` tomando `.env.example` como referencia. No subas `.env` ni sus credenciales.
+
+## Pre-entrega 8: arquitectura con DAO, Repository y DTO
+
+Se refactorizó la API para separar formalmente las capas descritas en [Arquitectura](#arquitectura), sin cambiar paths, métodos, roles, autenticación ni formato de las respuestas. Las únicas diferencias observables son la corrección de un bug previo en `PUT /api/events/:id` (ver [Corrección](#corrección-actualización-parcial-de-eventos)) y que los errores de validación o de clave duplicada de Mongoose, que antes terminaban en 500, ahora responden 400 o 409.
+
+### DAO y Repository
+
+| Entidad | DAO (acceso a datos) | Repository (dominio) |
+|---|---|---|
+| User | `find`, `findOne`, `findById`, `create`, `update`, `count` | `findByEmail`, `findUserById`, `findAllUsers`, `createUser` |
+| Event | `find`, `findOne`, `findById`, `create`, `update`, `count` | `findEvents`, `countEvents`, `findEventById`, `createEvent`, `updateEvent`, `updateEventStatus` |
+| Ticket | `find`, `findOne`, `findById`, `exists`, `create`, `updateOne`, `count`, `sumQuantity` | `hasActiveTicket`, `countActiveTickets`, `findTicketsByUser`, `findTicketsByEvent`, `findTicketById`, `createTicket`, `cancelTicket` |
+
+Los services no importan `mongoose` ni modelos: solo usan repositories. `findAllUsers` pide al DAO una proyección que excluye `password` en la consulta a MongoDB, y además `toUserDTO` filtra la respuesta.
+
+### DTO
+
+- `toUserDTO`: `id`, `first_name`, `last_name`, `email`, `role` (registro y `GET /api/users`).
+- `toCurrentUserDTO`: `id`, `email`, `role` (`GET /api/sessions/current`).
+- `toEventDTO`: datos públicos del evento; si `organizer` viene populado se reduce a `id`, `first_name`, `last_name` y `email`.
+- `toTicketDTO`: ticket del propietario, con lista blanca de campos (`id`, `event`, `status`, `quantity`, `reservationCode`, `createdAt`, `cancelledAt`). En `GET /api/tickets/my-tickets` el `event` se popula y el DTO lo reduce a `title`, `date` y `location`. Si el ticket tuviera el `user` populado, el DTO no lo incluye, por lo que su `password` nunca se expone.
+- `toEventTicketDTO`: ticket visto por el organizador del evento, sin datos personales del comprador.
+
+Ninguna respuesta incluye `password`, ni en texto plano ni hasheada.
+
+### Manejo de errores
+
+Los services lanzan errores con `AppError` (`src/utils/errors.js`) y los controllers los derivan con `next(error)`. `error.middleware.js` responde siempre con el formato:
+
+```json
+{ "status": "error", "message": "..." }
+```
+
+| Código | Cuándo |
+|---|---|
+| 400 | Datos inválidos (validaciones, JSON mal formado, `ValidationError`/`CastError` de Mongoose) |
+| 401 | Sin sesión válida o credenciales inválidas |
+| 403 | Sesión válida sin permisos (rol o recurso ajeno) |
+| 404 | Recurso o ruta inexistente |
+| 409 | Conflicto de negocio: email duplicado, evento no publicado, sin cupos, inscripción activa duplicada, ticket ya cancelado |
+| 500 | Error interno; no se exponen detalles al cliente |
+
+### Casos verificados
+
+1. Flujo completo: registro → login → crear evento → publicar → inscribirse → consultar mis tickets → cancelar.
+2. `GET /api/sessions/current` no incluye `password`.
+3. Un ticket con `populate` no incluye el `password` del usuario: lo cubre la prueba automatizada `test/ticket.dto.test.js`.
+4. Errores de negocio devuelven 400/404/409 en lugar de 500 (por ejemplo, inscribirse sin cupos responde 409).
+5. Endpoint protegido sin sesión responde 401; con sesión pero sin rol suficiente responde 403.
+
+### Pruebas
+
+```bash
+npm test
+```
+
+Ejecuta las pruebas con `node:test` (incluido en Node, sin dependencias adicionales). `test/ticket.dto.test.js` pasa a `toTicketDTO` un ticket con `event` y `user` populados, donde el usuario tiene un hash de contraseña ficticio, y verifica que la salida no contenga la clave `password` ni el hash.
+
+### Corrección: actualización parcial de eventos
+
+Desde la pre-entrega 6, `PUT /api/events/:id` (y su alias `PATCH /api/events/:id`) respondía 400 cuando el body no incluía todos los campos del evento, por ejemplo `{ "title": "Nuevo título" }` devolvía `description es obligatorio`. La causa era que el service copiaba el documento de Mongoose con `{ ...doc }`, que no copia sus campos. Ahora se usa `doc.toObject()`, de modo que los campos no enviados conservan su valor actual y se siguen aplicando las mismas validaciones. Es la corrección de un bug, no una funcionalidad nueva.
