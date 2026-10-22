@@ -169,72 +169,14 @@ Ruta inicial para el recurso de sesiones. En esta etapa responde con una lista v
 
 ## POST `/api/sessions/register`
 
-Registra un nuevo usuario en MongoDB.
+Registra un nuevo usuario. Body: `{ "first_name": "Ana", "last_name": "Pérez", "email": "Ana@Mail.com ", "password": "Secreta123" }`.
 
-**Body esperado:**
+- Todos los campos son obligatorios y la contraseña debe tener al menos 6 caracteres.
+- El email se normaliza (sin espacios y en minúsculas): `" Ana@Mail.com "` se guarda como `"ana@mail.com"`.
+- La contraseña se guarda hasheada con `bcrypt` (`src/utils/hash.js`).
+- El rol siempre es `user`; no se puede elegir desde el registro. Roles posibles: `user`, `organizer`, `admin`.
 
-```json
-{
-  "first_name": "Ana",
-  "last_name": "Pérez",
-  "email": "Ana@Mail.com ",
-  "password": "Secreta123"
-}
-```
-
-Campos obligatorios:
-
-- `first_name`
-- `last_name`
-- `email`
-- `password`
-
-La contraseña debe tener al menos 6 caracteres.
-
-El email se normaliza eliminando espacios al inicio y al final y convirtiéndolo a minúsculas. Por ejemplo, `" Ana@Mail.com "` se almacena como `"ana@mail.com"`.
-
-La contraseña nunca se almacena en texto plano; se genera un hash mediante `bcrypt` utilizando `src/utils/hash.js`.
-
-Los usuarios registrados reciben el rol `user` por defecto. El campo `role` no puede ser manipulado desde el registro público. Los valores permitidos son:
-
-- `user`
-- `organizer`
-- `admin`
-
-**Respuesta exitosa:** HTTP `201`
-
-```json
-{
-  "status": "success",
-  "payload": {
-    "id": "665f2a...",
-    "first_name": "Ana",
-    "last_name": "Pérez",
-    "email": "ana@mail.com",
-    "role": "user"
-  }
-}
-```
-
-La contraseña no se incluye en la respuesta, ni en texto plano ni en su versión hasheada.
-
-Si faltan campos obligatorios, responde HTTP `400`:
-
-```json
-{
-  "status": "error",
-  "message": "Faltan campos obligatorios"
-}
-```
-
-Un email inválido responde HTTP `400`. Un email ya registrado responde HTTP `409`:
-
-```json
-{
-  "status": "error",
-  "message": "El email ya está registrado"
-}
-```
+Responde HTTP `201` con `{ "status": "success", "payload": { "id", "first_name", "last_name", "email", "role" } }`, sin la contraseña ni su hash. Campos faltantes o email inválido responden `400`; un email ya registrado responde `409` (`"El email ya está registrado"`).
 
 ## Seguridad
 
@@ -277,116 +219,15 @@ Se implementó el registro de usuarios con validaciones, normalización de email
 
 ## Pre-entrega 3: autenticación con JWT y cookies
 
-### Login
+| Endpoint | Body | Respuesta |
+|---|---|---|
+| `POST /api/sessions/login` | `{ "email", "password" }` | `200` `{ "status": "success", "message": "Login correcto" }` y cookie `currentUser`. Credenciales inválidas: `401` `"Credenciales inválidas"` (no distingue usuario inexistente de contraseña incorrecta). Faltan datos: `400`. |
+| `GET /api/sessions/current` | — (cookie `currentUser`) | `200` `{ "status": "success", "payload": { "id", "email", "role" } }`. Sin cookie, token inválido o expirado: `401` `"No autenticado"`. |
+| `POST /api/sessions/logout` | — | `200` `{ "status": "success", "message": "Sesión cerrada" }`. Borra la cookie; no requiere autenticación. |
 
-`POST /api/sessions/login` recibe email y contraseña en JSON:
-
-```json
-{
-  "email": "ana@mail.com",
-  "password": "Secreta123"
-}
-```
-
-Con credenciales válidas responde HTTP `200`:
-
-```json
-{
-  "status": "success",
-  "message": "Login correcto"
-}
-```
-
-y establece la cookie `currentUser`.
-
-Usuario inexistente o contraseña incorrecta responde HTTP `401` con:
-
-```json
-{
-  "status": "error",
-  "message": "Credenciales inválidas"
-}
-```
-
-No se distinguen ambos casos. Si faltan credenciales, responde HTTP `400`.
-
-### Current
-
-`GET /api/sessions/current` requiere la cookie válida `currentUser`.
-
-**Ejemplo de request:**
-
-```http
-GET /api/sessions/current
-Cookie: currentUser=<JWT>
-```
-
-**Respuesta:** HTTP `200`
-
-```json
-{
-  "status": "success",
-  "payload": {
-    "id": "665f2a...",
-    "email": "ana@mail.com",
-    "role": "user"
-  }
-}
-```
-
-Sin cookie, con token inválido o expirado responde HTTP `401`:
-
-```json
-{
-  "status": "error",
-  "message": "No autenticado"
-}
-```
-
-### Logout
-
-`POST /api/sessions/logout` elimina la cookie `currentUser` y no requiere autenticación.
-
-**Ejemplo de request:**
-
-```http
-POST /api/sessions/logout
-Cookie: currentUser=<JWT>
-```
-
-No requiere body.
-
-**Respuesta:** HTTP `200`
-
-```json
-{
-  "status": "success",
-  "message": "Sesión cerrada"
-}
-```
-
-### Autenticación y variables de entorno
-
-El service valida las credenciales y utiliza `bcrypt` para comparar la contraseña. La lógica de JWT se encuentra en `src/utils/jwt.js`.
-
-El JWT contiene únicamente:
-
-- `id`
-- `email`
-- `role`
-
-Su expiración se configura mediante `JWT_EXPIRES_IN`.
-
-La cookie `currentUser` utiliza:
-
-- `httpOnly=true`
-- `sameSite=lax`
-- `maxAge=3600000`
-- `secure=true` solamente cuando `NODE_ENV=production`
-
-`/current` valida el token sin consultar MongoDB.
-
-Las variables de entorno utilizadas son `PORT`, `MONGO_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN` y `NODE_ENV`. El secreto JWT debe mantenerse privado y `.env` no debe subirse al repositorio.
+- El service compara la contraseña con `bcrypt`; la lógica de JWT está en `src/utils/jwt.js`.
+- El JWT contiene solo `id`, `email` y `role`, y expira según `JWT_EXPIRES_IN`. `/current` lo valida sin consultar MongoDB.
+- La cookie `currentUser` usa `httpOnly=true`, `sameSite=lax`, `maxAge=3600000` y `secure=true` solo con `NODE_ENV=production`.
 
 ## Pre-entrega 4: autenticación con Passport
 
@@ -451,59 +292,21 @@ Al confirmar, la API intenta enviar un email mediante Nodemailer. Si el envío f
 
 Se refactorizó la API para separar formalmente las capas descritas en [Arquitectura](#arquitectura), sin cambiar paths, métodos, roles, autenticación ni formato de las respuestas. Las únicas diferencias observables son la corrección de un bug previo en `PUT /api/events/:id` (ver [Corrección](#corrección-actualización-parcial-de-eventos)) y que los errores de validación o de clave duplicada de Mongoose, que antes terminaban en 500, ahora responden 400 o 409.
 
-### DAO y Repository
+### Evidencia por criterio de evaluación
 
-| Entidad | DAO (acceso a datos) | Repository (dominio) |
-|---|---|---|
-| User | `find`, `findOne`, `findById`, `create`, `update`, `count` | `findByEmail`, `findUserById`, `findAllUsers`, `createUser` |
-| Event | `find`, `findOne`, `findById`, `create`, `update`, `count` | `findEvents`, `countEvents`, `findEventById`, `createEvent`, `updateEvent`, `updateEventStatus` |
-| Ticket | `find`, `findOne`, `findById`, `exists`, `create`, `updateOne`, `count`, `sumQuantity` | `hasActiveTicket`, `countActiveTickets`, `findTicketsByUser`, `findTicketsByEvent`, `findTicketById`, `createTicket`, `cancelTicket` |
-
-Los services no importan `mongoose` ni modelos: solo usan repositories. `findAllUsers` pide al DAO una proyección que excluye `password` en la consulta a MongoDB, y además `toUserDTO` filtra la respuesta.
-
-### DTO
-
-- `toUserDTO`: `id`, `first_name`, `last_name`, `email`, `role` (registro y `GET /api/users`).
-- `toCurrentUserDTO`: `id`, `email`, `role` (`GET /api/sessions/current`).
-- `toEventDTO`: datos públicos del evento; si `organizer` viene populado se reduce a `id`, `first_name`, `last_name` y `email`.
-- `toTicketDTO`: ticket del propietario, con lista blanca de campos (`id`, `event`, `status`, `quantity`, `reservationCode`, `createdAt`, `cancelledAt`). En `GET /api/tickets/my-tickets` el `event` se popula y el DTO lo reduce a `title`, `date` y `location`. Si el ticket tuviera el `user` populado, el DTO no lo incluye, por lo que su `password` nunca se expone.
-- `toEventTicketDTO`: ticket visto por el organizador del evento, sin datos personales del comprador.
-
-Ninguna respuesta incluye `password`, ni en texto plano ni hasheada.
-
-### Manejo de errores
-
-Los services lanzan errores con `AppError` (`src/utils/errors.js`) y los controllers los derivan con `next(error)`. `error.middleware.js` responde siempre con el formato:
-
-```json
-{ "status": "error", "message": "..." }
-```
-
-| Código | Cuándo |
+| Criterio | Dónde se cumple |
 |---|---|
-| 400 | Datos inválidos (validaciones, JSON mal formado, `ValidationError`/`CastError` de Mongoose) |
-| 401 | Sin sesión válida o credenciales inválidas |
-| 403 | Sesión válida sin permisos (rol o recurso ajeno) |
-| 404 | Recurso o ruta inexistente |
-| 409 | Conflicto de negocio: email duplicado, evento no publicado, sin cupos, inscripción activa duplicada, ticket ya cancelado |
-| 500 | Error interno; no se exponen detalles al cliente |
+| **Patrón DAO y Repository** | Los DAO ([events.dao.js](src/dao/events.dao.js#L2), [tickets.dao.js](src/dao/tickets.dao.js#L2), [users.dao.js](src/dao/users.dao.js#L2)) son los únicos archivos que importan modelos de Mongoose. Los repositories ([src/repositories](src/repositories)) importan solo su DAO y exponen métodos de dominio: [`findByEmail`](src/repositories/users.repository.js#L3), [`hasActiveTicket`](src/repositories/tickets.repository.js#L11), [`countActiveTickets`](src/repositories/tickets.repository.js#L14), [`cancelTicket`](src/repositories/tickets.repository.js#L25). Ejemplo de la cadena: `tickets.service` → `ticketsRepository.countActiveTickets` → [`ticketsDao.sumQuantity`](src/dao/tickets.dao.js#L20) → modelo `Ticket`. |
+| **DTOs y seguridad de datos** | DTOs en [src/dto](src/dto): [`toUserDTO` / `toCurrentUserDTO`](src/dto/user.dto.js), [`toEventDTO`](src/dto/event.dto.js), [`toTicketDTO` / `toEventTicketDTO`](src/dto/ticket.dto.js). Se aplican en registro y `/current` ([sessions.controller.js](src/controllers/sessions.controller.js#L15)), usuarios ([users.service.js](src/services/users.service.js#L6)), eventos ([events.service.js](src/services/events.service.js#L54)) y tickets ([tickets.service.js](src/services/tickets.service.js#L65)). Son listas blancas: `password` nunca se devuelve, tampoco si un documento relacionado viene con `populate`. `GET /api/users` además excluye `password` en la consulta ([users.repository.js](src/repositories/users.repository.js#L7)). Lo comprueba la prueba [ticket.dto.test.js](test/ticket.dto.test.js) (`npm test`). |
+| **Arquitectura en capas y lógica de negocio en services** | Flujo Controller → Service → Repository → DAO. Los controllers ([src/controllers](src/controllers)) solo leen `params`/`body`/`query`/`req.user`, llaman al service y responden. Las reglas de negocio están en los services: evento publicado ([tickets.service.js:15](src/services/tickets.service.js#L15)), inscripción duplicada ([:24](src/services/tickets.service.js#L24)), cupos ([:28](src/services/tickets.service.js#L28)), email de confirmación ([:48](src/services/tickets.service.js#L48)), permisos sobre recursos propios ([:83](src/services/tickets.service.js#L83)) y estados de evento ([events.service.js:111-113](src/services/events.service.js#L111-L113)). |
 
-### Casos verificados
+### Detalles
 
-1. Flujo completo: registro → login → crear evento → publicar → inscribirse → consultar mis tickets → cancelar.
-2. `GET /api/sessions/current` no incluye `password`.
-3. Un ticket con `populate` no incluye el `password` del usuario: lo cubre la prueba automatizada `test/ticket.dto.test.js`.
-4. Errores de negocio devuelven 400/404/409 en lugar de 500 (por ejemplo, inscribirse sin cupos responde 409).
-5. Endpoint protegido sin sesión responde 401; con sesión pero sin rol suficiente responde 403.
-
-### Pruebas
-
-```bash
-npm test
-```
-
-Ejecuta las pruebas con `node:test` (incluido en Node, sin dependencias adicionales). `test/ticket.dto.test.js` pasa a `toTicketDTO` un ticket con `event` y `user` populados, donde el usuario tiene un hash de contraseña ficticio, y verifica que la salida no contenga la clave `password` ni el hash.
+- Los services no importan `mongoose` ni modelos. `GET /api/users` excluye `password` en la consulta y `toUserDTO` lo filtra de nuevo; ninguna respuesta incluye `password`, ni en texto plano ni hasheada.
+- Errores: los services lanzan `AppError` (`src/utils/errors.js`) y `error.middleware.js` responde siempre `{ "status": "error", "message": "..." }` con `400` (datos inválidos), `401` (sin sesión), `403` (sin permisos), `404` (no encontrado), `409` (conflicto: email duplicado, evento no publicado, sin cupos, inscripción duplicada, ticket ya cancelado) o `500` (error interno, sin detalles).
+- Pruebas: `npm test` corre `test/ticket.dto.test.js` con `node:test` y comprueba que un ticket con `user` populado no exponga la clave `password` ni el hash.
+- Casos verificados: flujo registro → login → crear evento → inscribirse → mis tickets → cancelar; `/current` sin `password`; errores de negocio con su código (no 500); `401` sin sesión y `403` sin permisos.
 
 ### Corrección: actualización parcial de eventos
 
-Desde la pre-entrega 6, `PUT /api/events/:id` (y su alias `PATCH /api/events/:id`) respondía 400 cuando el body no incluía todos los campos del evento, por ejemplo `{ "title": "Nuevo título" }` devolvía `description es obligatorio`. La causa era que el service copiaba el documento de Mongoose con `{ ...doc }`, que no copia sus campos. Ahora se usa `doc.toObject()`, de modo que los campos no enviados conservan su valor actual y se siguen aplicando las mismas validaciones. Es la corrección de un bug, no una funcionalidad nueva.
+`PUT /api/events/:id` (y su alias `PATCH`) respondía `400` desde la pre-entrega 6 si el body no traía todos los campos, porque el service copiaba el documento con `{ ...doc }`. Ahora usa `doc.toObject()` y los campos no enviados conservan su valor. Es la corrección de un bug, no una funcionalidad nueva.
