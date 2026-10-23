@@ -1,11 +1,12 @@
 import { isPopulated, toId } from "./dto.utils.js";
 import { toEventSummaryDTO } from "./event.dto.js";
 
-// Ticket visto por su dueño (o admin). Lista blanca de campos: aunque el
-// ticket venga con user populado, sus datos (incluido password) nunca salen.
+// Ticket visto por su dueño (o admin). Lista blanca de campos: del usuario
+// solo sale el id, aunque venga populado; sus datos (incluido password) nunca salen.
 export const toTicketDTO = (ticket) => ({
   id: toId(ticket._id),
   event: isPopulated(ticket.event) ? toEventSummaryDTO(ticket.event) : toId(ticket.event),
+  user: toId(isPopulated(ticket.user) ? ticket.user._id : ticket.user),
   status: ticket.status,
   quantity: ticket.quantity,
   reservationCode: ticket.reservationCode,

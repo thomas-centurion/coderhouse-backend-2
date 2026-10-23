@@ -1,194 +1,259 @@
-# Plataforma de Eventos
+# Plataforma de Eventos e Inscripciones — API Backend
 
-## Tema elegido
+API REST para una plataforma donde organizadores publican eventos y los usuarios se inscriben a ellos. Incluye registro y login con JWT en cookie, Passport, roles y autorización, gestión de eventos con validaciones, inscripciones con control de cupos, emails de confirmación con Nodemailer y una arquitectura por capas con DAO, Repository, Services y DTO.
 
-Plataforma de gestión de eventos e inscripciones.
-
-El proyecto consiste en una API REST para gestionar usuarios y eventos, que se irá ampliando progresivamente durante las distintas entregas del curso.
+Es la entrega final del curso Backend II: la evolución del mismo proyecto a lo largo de las pre-entregas 1 a 8.
 
 ## Tecnologías
 
-- Node.js
-- Express
-- JavaScript
-- ESM (ECMAScript Modules)
-- dotenv
-- cookie-parser
-- jsonwebtoken
-- passport
-- MongoDB
-- Mongoose
+- Node.js (ESM) y Express 5
+- MongoDB y Mongoose
+- Passport (estrategias `register`, `login` y `current`)
+- JSON Web Token (`jsonwebtoken`) y `cookie-parser`
 - bcrypt
+- Nodemailer
+- dotenv
+- `node:test` para pruebas y una colección de Postman para el flujo completo
 
 ## Instalación
 
-Clonar el repositorio e instalar las dependencias:
+Requisitos: Node.js 20 o superior (probado con Node 22) y una base MongoDB (local o Atlas).
 
 ```bash
+git clone https://github.com/thomas-centurion/coderhouse-backend-2.git
+cd coderhouse-backend-2
 npm install
-```
-
-## Variables de entorno
-
-Crear un archivo `.env` en la raíz del proyecto tomando como referencia `.env.example`.
-
-```env
-PORT=3000
-NODE_ENV=development
-MONGO_URL=tu_url_de_mongodb
-JWT_SECRET=tu_secreto
-JWT_EXPIRES_IN=1h
-```
-
-- `PORT`: puerto del servidor.
-- `NODE_ENV`: entorno de ejecución.
-- `MONGO_URL`: URL de conexión a MongoDB.
-- `JWT_SECRET`: secreto utilizado para firmar y verificar JWT.
-- `JWT_EXPIRES_IN`: tiempo de validez del JWT, por ejemplo `1h`.
-- `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS` y `MAIL_FROM`: configuración SMTP para los emails de confirmación de tickets.
-
-El archivo `.env` contiene información sensible y no debe subirse al repositorio.
-
-## Ejecución
-
-```bash
+cp .env.example .env    # completar los valores
+npm run seed            # crea los usuarios de prueba
 npm start
 ```
 
-Por defecto, el servidor utiliza el puerto `3000`. Al iniciar correctamente, establece la conexión con MongoDB y levanta el servidor Express.
+El servidor queda escuchando en `http://localhost:3000` (o el `PORT` configurado). `GET /api/health` responde `{ "status": "ok", "message": "Servidor activo" }`.
 
-## Estructura del proyecto
+## Variables de entorno
 
-```text
-src/
-├── config/
-│   ├── database.js
-│   ├── mailer.js
-│   ├── passport.config.js
-│   └── env.js
-├── controllers/
-│   ├── events.controller.js
-│   ├── health.controller.js
-│   ├── sessions.controller.js
-│   ├── tickets.controller.js
-│   └── users.controller.js
-├── dao/
-│   ├── events.dao.js
-│   ├── tickets.dao.js
-│   └── users.dao.js
-├── dto/
-│   ├── dto.utils.js
-│   ├── event.dto.js
-│   ├── ticket.dto.js
-│   └── user.dto.js
-├── middlewares/
-│   ├── auth.middleware.js
-│   ├── authorize.middleware.js
-│   ├── error.middleware.js
-│   └── not-found.middleware.js
-├── models/
-│   ├── Event.js
-│   ├── Ticket.js
-│   └── User.js
-├── repositories/
-│   ├── events.repository.js
-│   ├── tickets.repository.js
-│   └── users.repository.js
-├── routes/
-│   ├── events.router.js
-│   ├── health.router.js
-│   ├── sessions.router.js
-│   ├── tickets.router.js
-│   └── users.router.js
-├── services/
-│   ├── events.service.js
-│   ├── email.service.js
-│   ├── sessions.service.js
-│   ├── tickets.service.js
-│   └── users.service.js
-├── utils/
-│   ├── errors.js
-│   ├── hash.js
-│   └── jwt.js
-├── app.js
-└── server.js
-```
+Se configuran en `.env` (no se sube al repositorio) tomando `.env.example` como base:
 
-## Endpoints disponibles
-
-| Método | Endpoint | Descripción |
+| Variable | Descripción | Ejemplo |
 |---|---|---|
-| GET | `/api/health` | Comprueba que el servidor esté activo |
-| GET | `/api/events` | Obtiene la lista de eventos |
-| GET | `/api/events/:id` | Obtiene un evento por ID |
-| POST | `/api/events` | Crea un evento (organizer/admin) |
-| PUT | `/api/events/:id` | Modifica un evento propio (organizer) o cualquiera (admin) |
-| PATCH | `/api/events/:id` | Modifica un evento propio (organizer) o cualquiera (admin) |
-| PATCH | `/api/events/:id/status` | Cambia el estado del evento (organizer/admin propietario o admin) |
-| DELETE | `/api/events/:id` | Cancela un evento propio (organizer) o cualquiera (admin) |
-| POST | `/api/events/:eid/tickets` | Crea una inscripción (autenticado) |
-| GET | `/api/tickets/my-tickets` | Lista las inscripciones propias (autenticado) |
-| GET | `/api/events/:eid/tickets` | Lista tickets del evento (organizer propietario o admin) |
-| PATCH | `/api/tickets/:tid/cancel` | Cancela un ticket propio o cualquiera como admin |
-| GET | `/api/sessions` | Ruta inicial para el recurso de sesiones |
-| POST | `/api/sessions/register` | Registra un nuevo usuario |
-| POST | `/api/sessions/login` | Inicia sesión y establece la cookie de autenticación |
-| GET | `/api/sessions/current` | Devuelve los datos públicos del usuario autenticado |
-| POST | `/api/sessions/logout` | Cierra la sesión y elimina la cookie |
-| GET | `/api/users` | Lista usuarios (solo admin; sin contraseñas) |
+| `PORT` | Puerto del servidor | `3000` |
+| `NODE_ENV` | Entorno. Con `production` la cookie se marca `secure` | `development` |
+| `MONGO_URL` | URL de conexión a MongoDB | `mongodb://127.0.0.1:27017/eventos` |
+| `JWT_SECRET` | Secreto para firmar los JWT | una cadena larga y aleatoria |
+| `JWT_EXPIRES_IN` | Vigencia del JWT | `1h` |
+| `MAIL_HOST` | Servidor SMTP | `sandbox.smtp.mailtrap.io` |
+| `MAIL_PORT` | Puerto SMTP (`465` usa conexión segura) | `587` |
+| `MAIL_USER` | Usuario SMTP | |
+| `MAIL_PASS` | Contraseña SMTP | |
+| `MAIL_FROM` | Remitente de los emails | `Eventos <no-reply@eventos.com>` |
 
-## GET `/api/health`
+Las credenciales de JWT y de email se leen solo de variables de entorno (`src/config/env.js`); no hay ninguna en el código. Para pruebas se puede usar un servicio como Mailtrap o una contraseña de aplicación de Gmail.
 
-Comprueba que el servidor se encuentre activo.
+## Comandos
 
-**Respuesta:** HTTP `200`
+| Comando | Qué hace |
+|---|---|
+| `npm start` | Inicia el servidor |
+| `npm run dev` | Inicia el servidor y lo reinicia al guardar cambios (`node --watch`) |
+| `npm run seed` | Crea los usuarios de prueba (si ya existen, no los duplica) |
+| `npm test` | Ejecuta las pruebas automatizadas (`node:test`) |
 
-```json
-{
-  "status": "ok",
-  "message": "Servidor activo"
-}
+## Usuarios de prueba
+
+`npm run seed` crea un usuario por rol, todos con la contraseña `Test1234`:
+
+| Email | Rol |
+|---|---|
+| `user@test.com` | `user` |
+| `organizer@test.com` | `organizer` |
+| `admin@test.com` | `admin` |
+
+El script ([scripts/seed.js](scripts/seed.js)) usa el repository de usuarios y guarda la contraseña hasheada con bcrypt. Son datos solo para desarrollo.
+
+Para crear otros usuarios: `POST /api/sessions/register` siempre asigna el rol `user`. Para convertirlo en `organizer` o `admin` hay que cambiar el campo `role` directamente en la base, por ejemplo con `mongosh`:
+
+```js
+db.users.updateOne({ email: "ana@mail.com" }, { $set: { role: "organizer" } })
 ```
 
-## GET `/api/events`
+## Roles y permisos
 
-El endpoint es público. Por defecto devuelve solamente eventos `published`; si se envía `status`, permite solicitar explícitamente `draft`, `published`, `cancelled` o `finished`. También admite los filtros `category`, `location`, `dateFrom` y `dateTo`, además de `page` (1 por defecto), `limit` (10 por defecto) y `sort=date` (ascendente) o `sort=-date` (descendente). La respuesta incluye `payload.data`, `page`, `limit`, `total` y `totalPages`.
+Roles: `user` (por defecto), `organizer` y `admin`. El registro público ignora cualquier `role` enviado en el body.
 
-**Respuesta:** HTTP `200`
+| Acción | user | organizer | admin |
+|---|:---:|:---:|:---:|
+| Ver eventos publicados | Sí | Sí | Sí |
+| Inscribirse a eventos y ver/cancelar sus tickets | Sí | Sí | Sí |
+| Crear eventos | No | Sí | Sí |
+| Modificar, cambiar estado o cancelar eventos propios | No | Sí | Sí |
+| Modificar o cancelar eventos de otros | No | No | Sí |
+| Ver los tickets de un evento | No | Solo si es el dueño | Sí |
+| Cancelar tickets de otros | No | No | Sí |
+| Listar usuarios (`GET /api/users`) | No | No | Sí |
+
+Las rutas protegidas encadenan `auth.middleware.js` (sin sesión válida → `401`) y `authorize.middleware.js` (rol no permitido → `403`). Los permisos sobre recursos propios (ser dueño del evento o del ticket) se validan en los services y también responden `403`.
+
+## Endpoints
+
+| Método | Endpoint | Acceso | Descripción |
+|---|---|---|---|
+| GET | `/api/health` | Público | Estado del servidor |
+| POST | `/api/sessions/register` | Público | Registra un usuario con rol `user` |
+| POST | `/api/sessions/login` | Público | Inicia sesión y guarda el JWT en la cookie `currentUser` |
+| GET | `/api/sessions/current` | Autenticado | Datos del usuario de la sesión (`id`, `email`, `role`) |
+| POST | `/api/sessions/logout` | Público | Borra la cookie de sesión |
+| GET | `/api/sessions` | Público | Ruta inicial del recurso (responde una lista vacía) |
+| GET | `/api/users` | admin | Lista usuarios, sin contraseñas |
+| GET | `/api/events` | Público | Lista eventos con filtros, paginación y orden |
+| GET | `/api/events/:id` | Público | Detalle de un evento |
+| POST | `/api/events` | organizer, admin | Crea un evento (queda en `draft`) |
+| PUT | `/api/events/:id` | Dueño o admin | Modifica un evento (admite cambios parciales) |
+| PATCH | `/api/events/:id` | Dueño o admin | Alias de `PUT /api/events/:id` |
+| PATCH | `/api/events/:id/status` | Dueño o admin | Cambia el estado: `{ "status": "published" }` |
+| DELETE | `/api/events/:id` | Dueño o admin | Cancela el evento (estado `cancelled`, no lo borra) |
+| POST | `/api/events/:eid/tickets` | Autenticado | Inscripción: `{ "quantity": 2 }` |
+| GET | `/api/events/:eid/tickets` | Dueño del evento o admin | Tickets del evento, sin datos personales de los compradores |
+| GET | `/api/tickets/my-tickets` | Autenticado | Tickets propios, con `title`, `date` y `location` del evento |
+| PATCH | `/api/tickets/:tid/cancel` | Dueño del ticket o admin | Cancela el ticket (no lo borra) |
+
+### Filtros de `GET /api/events`
+
+| Parámetro | Descripción | Por defecto |
+|---|---|---|
+| `status` | `draft`, `published`, `cancelled` o `finished` | `published` |
+| `category` | Categoría exacta | — |
+| `location` | Búsqueda parcial sin distinguir mayúsculas | — |
+| `dateFrom`, `dateTo` | Rango de fechas | — |
+| `page`, `limit` | Paginación | `1`, `10` |
+| `sort` | `date` (ascendente) o `-date` (descendente) | `date` |
+
+## Ejemplos de uso
+
+Con `curl`, guardando la cookie de sesión en `cookies.txt` (en PowerShell usar `curl.exe`):
+
+```bash
+# Login como organizer
+curl -c cookies.txt -X POST http://localhost:3000/api/sessions/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"organizer@test.com","password":"Test1234"}'
+
+# Crear un evento
+curl -b cookies.txt -X POST http://localhost:3000/api/events \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Congreso Tech 2026","description":"Charlas de tecnología","category":"tecnologia","date":"2030-06-15T18:00:00.000Z","location":"Buenos Aires","capacity":100,"price":0}'
+
+# Publicarlo
+curl -b cookies.txt -X PATCH http://localhost:3000/api/events/<eventId>/status \
+  -H "Content-Type: application/json" -d '{"status":"published"}'
+
+# Login como user e inscribirse
+curl -c cookies.txt -X POST http://localhost:3000/api/sessions/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@test.com","password":"Test1234"}'
+curl -b cookies.txt -X POST http://localhost:3000/api/events/<eventId>/tickets \
+  -H "Content-Type: application/json" -d '{"quantity":1}'
+```
+
+`GET /api/events?status=published&page=2&limit=5` → `200`:
 
 ```json
 {
   "status": "success",
-  "payload": { "data": [], "page": 1, "limit": 10, "total": 0, "totalPages": 0 }
+  "data": [
+    { "id": "6690...", "title": "Congreso Tech 2026", "description": "Charlas de tecnología", "category": "tecnologia", "date": "2030-06-15T18:00:00.000Z", "location": "Buenos Aires", "capacity": 100, "price": 0, "status": "published", "organizer": "665f..." }
+  ],
+  "page": 2,
+  "limit": 5,
+  "total": 27,
+  "totalPages": 6
 }
 ```
 
-## GET `/api/sessions`
+`POST /api/events/:eid/tickets` → `201`:
 
-Ruta inicial para el recurso de sesiones. En esta etapa responde con una lista vacía.
+```json
+{
+  "status": "success",
+  "payload": {
+    "id": "66a1...",
+    "event": "6690...",
+    "user": "665f...",
+    "status": "confirmed",
+    "quantity": 1,
+    "reservationCode": "42714833-73e5-4527-a1c6-f0e3db402d1b",
+    "createdAt": "2026-10-22T13:14:20.112Z",
+    "cancelledAt": null
+  }
+}
+```
 
-## POST `/api/sessions/register`
+Inscripción duplicada → `409`:
 
-Registra un nuevo usuario. Body: `{ "first_name": "Ana", "last_name": "Pérez", "email": "Ana@Mail.com ", "password": "Secreta123" }`.
+```json
+{ "status": "error", "message": "Ya tenés una inscripción activa para este evento" }
+```
 
-- Todos los campos son obligatorios y la contraseña debe tener al menos 6 caracteres.
-- El email se normaliza (sin espacios y en minúsculas): `" Ana@Mail.com "` se guarda como `"ana@mail.com"`.
-- La contraseña se guarda hasheada con `bcrypt` (`src/utils/hash.js`).
-- El rol siempre es `user`; no se puede elegir desde el registro. Roles posibles: `user`, `organizer`, `admin`.
+## Flujo de autenticación
 
-Responde HTTP `201` con `{ "status": "success", "payload": { "id", "first_name", "last_name", "email", "role" } }`, sin la contraseña ni su hash. Campos faltantes o email inválido responden `400`; un email ya registrado responde `409` (`"El email ya está registrado"`).
+1. **Registro** (`POST /api/sessions/register`). La estrategia `register` de Passport delega en el service, que:
+   - valida los campos (todos obligatorios, contraseña de 6 caracteres o más);
+   - normaliza el email (sin espacios y en minúsculas);
+   - rechaza emails repetidos (`409`);
+   - guarda la contraseña hasheada con bcrypt y el rol `user`.
 
-## Seguridad
+   La respuesta pasa por `toUserDTO`: `id`, `first_name`, `last_name`, `email` y `role`, sin `password`.
+2. **Login** (`POST /api/sessions/login`). La estrategia `login` compara la contraseña con bcrypt. Si las credenciales son incorrectas responde `401` `"Credenciales inválidas"`, sin decir si el usuario existe. Si son correctas, se genera un JWT que contiene solo `id`, `email` y `role` (nunca `password`) y se guarda en la cookie `currentUser`.
+3. **La cookie** usa `httpOnly`, `sameSite=lax`, dura 1 hora y es `secure` en producción. El JWT expira según `JWT_EXPIRES_IN`.
+4. **Rutas protegidas**. La estrategia `current` lee y verifica el JWT de la cookie y deja sus datos en `req.user`. Sin cookie, o con un token inválido o vencido, responde `401` `"No autenticado"`. Después, `authorize` controla el rol (`403`).
+5. **Logout** (`POST /api/sessions/logout`) borra la cookie. Desde ahí, `GET /api/sessions/current` responde `401`.
 
-- Las contraseñas se procesan mediante `bcrypt`.
-- El registro no devuelve la contraseña ni su hash.
-- El campo `role` no puede ser definido por el usuario durante el registro público.
-- Las variables sensibles se almacenan mediante variables de entorno.
-- `.env` está excluido del repositorio mediante `.gitignore`.
+Las estrategias están en [src/config/passport.config.js](src/config/passport.config.js).
+
+## Flujo de inscripción
+
+1. Un `organizer` (o `admin`) crea el evento con `POST /api/events`. El evento nace en `draft` y su `organizer` se toma de la sesión, nunca del body.
+2. Lo publica con `PATCH /api/events/:id/status` y `{ "status": "published" }`.
+3. Un usuario autenticado se inscribe con `POST /api/events/:eid/tickets` y `{ "quantity": n }`. El service valida, en este orden:
+   - el evento existe (`404`) y está `published` (`409`);
+   - `quantity` es un número mayor que 0 (`400`);
+   - el usuario no tiene ya una inscripción activa en ese evento (`409`);
+   - hay cupo: la suma de `quantity` de los tickets activos (`confirmed` o `pending`) más la cantidad pedida no supera `capacity` (`409` `"No hay cupos suficientes para esa cantidad"`).
+4. Se crea el ticket `confirmed`, con referencias al usuario y al evento y un `reservationCode` único. Responde `201`.
+5. Se envía un email de confirmación con Nodemailer (evento, fecha, ubicación, cantidad y código de reserva). Si el email falla, la inscripción se conserva y el servidor registra un mensaje genérico.
+6. El usuario consulta sus tickets con `GET /api/tickets/my-tickets`. Cada ticket trae, con `populate`, el `title`, `date` y `location` del evento.
+7. El dueño del ticket o un admin lo cancela con `PATCH /api/tickets/:tid/cancel`:
+   - el estado pasa a `cancelled` y se registra `cancelledAt`;
+   - el ticket no se borra;
+   - los tickets cancelados no ocupan cupo, así que el lugar queda libre y el usuario puede volver a inscribirse.
+
+## Modelos
+
+- **User**: `first_name`, `last_name`, `email` (único), `password` (hash bcrypt) y `role` (`user`, `organizer` o `admin`).
+- **Event**: `title`, `description`, `category`, `date`, `location`, `capacity` (mayor que 0), `price` (0 o más, por defecto 0), `status` (`draft`, `published`, `cancelled` o `finished`) y `organizer` (referencia a `User`).
+  - Al crear un evento o cambiarle la fecha, la fecha tiene que ser futura.
+  - Un evento `cancelled` ya no se puede modificar, y uno `finished` no se puede volver a publicar.
+- **Ticket**: `user` y `event` (referencias por ObjectId, no objetos embebidos), `status` (`confirmed`, `pending` o `cancelled`), `quantity`, `reservationCode` (único), `createdAt` y `cancelledAt`.
+
+## Manejo de errores
+
+Los services lanzan errores con `AppError` ([src/utils/errors.js](src/utils/errors.js)). Los controllers los pasan con `next(error)` y [error.middleware.js](src/middlewares/error.middleware.js) responde siempre con el mismo formato:
+
+```json
+{ "status": "error", "message": "..." }
+```
+
+| Código | Cuándo |
+|---|---|
+| `400` | Datos inválidos: validaciones, fecha pasada, `capacity` o `price` fuera de rango, JSON mal formado |
+| `401` | Sin sesión válida o credenciales incorrectas |
+| `403` | Sesión válida pero sin permisos (por rol o por no ser dueño del recurso) |
+| `404` | Evento, ticket o ruta inexistente |
+| `409` | Conflicto: email ya registrado, evento no publicado, sin cupo, inscripción duplicada, ticket ya cancelado |
+| `500` | Error interno. El cliente recibe solo `"Error interno del servidor"`; el detalle queda en el log del servidor |
 
 ## Arquitectura
 
-El proyecto utiliza una arquitectura por capas. Cada capa solo conoce a la inmediatamente inferior:
+El proyecto está organizado en capas. Cada capa usa solo la que tiene inmediatamente debajo:
 
 ```text
 Request → Route → Middlewares → Controller → Service → Repository → DAO → Model (Mongoose) → MongoDB
@@ -209,90 +274,7 @@ Request → Route → Middlewares → Controller → Service → Repository → 
 | Utils | `src/utils` | Hash (bcrypt), JWT y errores HTTP (`AppError` y helpers `badRequest`, `unauthorized`, `forbidden`, `notFound`, `conflict`). | — |
 | Config | `src/config` | Variables de entorno, conexión a MongoDB, transporte de email y estrategias de Passport. | Services, utils |
 
-El modelo `User` define `first_name`, `last_name`, `email`, `password` y `role`. Los modelos `Event` y `Ticket` se describen en las secciones de las pre-entregas 6 y 7.
-
-La ruta de health delega la respuesta en `health.controller.js`. Las rutas inexistentes reciben una respuesta JSON 404 mediante `not-found.middleware.js`, registrado después de las rutas y antes del middleware global de errores.
-
-## Pre-entrega 2
-
-Se implementó el registro de usuarios con validaciones, normalización de emails, hash de contraseñas mediante `bcrypt`, persistencia en MongoDB y arquitectura por capas.
-
-## Pre-entrega 3: autenticación con JWT y cookies
-
-| Endpoint | Body | Respuesta |
-|---|---|---|
-| `POST /api/sessions/login` | `{ "email", "password" }` | `200` `{ "status": "success", "message": "Login correcto" }` y cookie `currentUser`. Credenciales inválidas: `401` `"Credenciales inválidas"` (no distingue usuario inexistente de contraseña incorrecta). Faltan datos: `400`. |
-| `GET /api/sessions/current` | — (cookie `currentUser`) | `200` `{ "status": "success", "payload": { "id", "email", "role" } }`. Sin cookie, token inválido o expirado: `401` `"No autenticado"`. |
-| `POST /api/sessions/logout` | — | `200` `{ "status": "success", "message": "Sesión cerrada" }`. Borra la cookie; no requiere autenticación. |
-
-- El service compara la contraseña con `bcrypt`; la lógica de JWT está en `src/utils/jwt.js`.
-- El JWT contiene solo `id`, `email` y `role`, y expira según `JWT_EXPIRES_IN`. `/current` lo valida sin consultar MongoDB.
-- La cookie `currentUser` usa `httpOnly=true`, `sameSite=lax`, `maxAge=3600000` y `secure=true` solo con `NODE_ENV=production`.
-
-## Pre-entrega 4: autenticación con Passport
-
-Passport se inicializa en `src/app.js`; las estrategias se registran en `src/config/passport.config.js`, separadas de la configuración de Express:
-
-- `register` delega el alta al service, que valida los datos, normaliza el email, evita duplicados y guarda el hash con bcrypt.
-- `login` delega la búsqueda y comparación de contraseña al service. El controller genera el JWT y establece `currentUser` con las opciones de cookie de P3.
-- `current` verifica el JWT de la cookie y deja su payload validado en `req.user`; el controller responde con `id`, `email` y `role`.
-
-Las rutas públicas conservan sus paths y respuestas. Logout no utiliza Passport y continúa borrando la cookie. Para agregar proveedores como Google o GitHub, se registra la estrategia correspondiente en `passport.config.js` sin cambiar `app.js`. El service conserva la lógica de negocio y acceso mediante repository; los controllers manejan las respuestas HTTP y la cookie.
-
-## Pre-entrega 5: autorización por roles
-
-Los roles permitidos son `user`, `organizer` y `admin`; el registro público siempre asigna `user`. La autenticación valida `currentUser` con Passport y produce 401 si no hay sesión válida. Luego `authorize.middleware.js` valida permisos y devuelve 403 si el rol no está habilitado.
-
-| Acción | user | organizer | admin |
-|---|:---:|:---:|:---:|
-| Consultar eventos publicados | Sí | Sí | Sí |
-| Crear eventos | No | Sí | Sí |
-| Modificar/cancelar eventos propios | No | Sí | Sí |
-| Modificar/cancelar cualquier evento | No | No | Sí |
-| Ver todos los usuarios (`GET /api/users`) | No | No | Sí |
-
-Las rutas protegidas siguen el orden autenticación → autorización → controller. `GET /api/users` requiere admin. Los eventos asocian `organizer` al usuario autenticado; no se acepta ese dato desde el body. El organizer opera solo sobre eventos propios y admin puede operar sobre cualquiera. Cancelar cambia el estado a `cancelled` y conserva el documento.
-
-401 significa que falta una sesión válida:
-
-```json
-{ "status": "error", "message": "No autenticado" }
-```
-
-403 significa que la sesión es válida pero el usuario no tiene permisos:
-
-```json
-{ "status": "error", "message": "No tenés permisos para realizar esta acción" }
-```
-
-`GET /api/users` devuelve únicamente `id`, nombre, apellido, email y rol; nunca incluye contraseñas ni hashes.
-
-## Pre-entrega 6: gestión de eventos
-
-Un evento contiene `title`, `description`, `category`, `date`, `location`, `capacity`, `price`, `status` y `organizer`. `capacity` debe ser mayor que cero; `price` debe ser mayor o igual que cero y por defecto es `0`. Los estados admitidos son `draft`, `published`, `cancelled` y `finished`; los eventos nuevos comienzan como `draft`. La fecha debe ser válida y futura al crear o cambiar la fecha.
-
-`POST /api/events` recibe los campos del evento excepto `organizer` y asigna el organizador desde la sesión. `PUT /api/events/:id` modifica los campos editables; `PATCH /api/events/:id/status` recibe `{ "status": "published" }` (o uno de los otros estados permitidos). Los eventos `cancelled` no pueden volver a modificarse ni publicarse los que estén `finished`. La ruta P5 `PATCH /api/events/:id` sigue disponible como alias de actualización. `DELETE /api/events/:id` se conserva por compatibilidad y cancela mediante estado, sin borrar el documento.
-
-`GET /api/events/:id` responde 404 si el ID no es válido o no existe. Los filtros y la paginación de `GET /api/events` se aplican en base de datos. La colección de eventos de la base actual fue diagnosticada y contiene 0 documentos, por lo que no existen datos antiguos que requieran migración.
-
-## Pre-entrega 7: tickets e inscripciones
-
-`Ticket` almacena referencias ObjectId a `User` y `Event`, `status` (`confirmed`, `pending` o `cancelled`), `quantity`, `reservationCode`, `createdAt` y `cancelledAt`. Una inscripción exitosa se confirma directamente. El usuario siempre se toma de la sesión autenticada.
-
-- `POST /api/events/:eid/tickets` requiere autenticación y un body como `{ "quantity": 2 }`. Solo admite eventos existentes en estado `published` y una cantidad finita mayor que cero.
-- Los cupos ocupados se calculan sumando `quantity` de los tickets `confirmed` y `pending`. No se cuentan tickets `cancelled`; si no alcanzan los cupos de `Event.capacity`, responde con un error de conflicto.
-- Un usuario no puede tener más de un ticket activo para el mismo evento. Los tickets cancelados se conservan y permiten una nueva inscripción.
-- `GET /api/tickets/my-tickets` requiere autenticación y devuelve solo los tickets del usuario, con `title`, `date` y `location` del evento.
-- `GET /api/events/:eid/tickets` requiere autenticación; el service permite al organizer propietario o a admin. No incluye datos personales de compradores.
-- `PATCH /api/tickets/:tid/cancel` requiere autenticación. El propietario o admin puede cancelar una sola vez; se registra `cancelledAt` y el ticket no se elimina.
-
-Al confirmar, la API intenta enviar un email mediante Nodemailer. Si el envío falla, la inscripción confirmada se conserva y la solicitud sigue respondiendo exitosamente; el servidor registra un mensaje genérico sin credenciales ni detalles sensibles. Para habilitar el correo configura `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS` y `MAIL_FROM` en `.env` tomando `.env.example` como referencia. No subas `.env` ni sus credenciales.
-
-## Pre-entrega 8: arquitectura con DAO, Repository y DTO
-
-Se refactorizó la API para separar formalmente las capas descritas en [Arquitectura](#arquitectura), sin cambiar paths, métodos, roles, autenticación ni formato de las respuestas. Las únicas diferencias observables son la corrección de un bug previo en `PUT /api/events/:id` (ver [Corrección](#corrección-actualización-parcial-de-eventos)) y que los errores de validación o de clave duplicada de Mongoose, que antes terminaban en 500, ahora responden 400 o 409.
-
-### Evidencia por criterio de evaluación
+### Evidencia por criterio
 
 | Criterio | Dónde se cumple |
 |---|---|
@@ -300,13 +282,68 @@ Se refactorizó la API para separar formalmente las capas descritas en [Arquitec
 | **DTOs y seguridad de datos** | DTOs en [src/dto](src/dto): [`toUserDTO` / `toCurrentUserDTO`](src/dto/user.dto.js), [`toEventDTO`](src/dto/event.dto.js), [`toTicketDTO` / `toEventTicketDTO`](src/dto/ticket.dto.js). Se aplican en registro y `/current` ([sessions.controller.js](src/controllers/sessions.controller.js#L15)), usuarios ([users.service.js](src/services/users.service.js#L6)), eventos ([events.service.js](src/services/events.service.js#L54)) y tickets ([tickets.service.js](src/services/tickets.service.js#L65)). Son listas blancas: `password` nunca se devuelve, tampoco si un documento relacionado viene con `populate`. `GET /api/users` además excluye `password` en la consulta ([users.repository.js](src/repositories/users.repository.js#L7)). Lo comprueba la prueba [ticket.dto.test.js](test/ticket.dto.test.js) (`npm test`). |
 | **Arquitectura en capas y lógica de negocio en services** | Flujo Controller → Service → Repository → DAO. Los controllers ([src/controllers](src/controllers)) solo leen `params`/`body`/`query`/`req.user`, llaman al service y responden. Las reglas de negocio están en los services: evento publicado ([tickets.service.js:15](src/services/tickets.service.js#L15)), inscripción duplicada ([:24](src/services/tickets.service.js#L24)), cupos ([:28](src/services/tickets.service.js#L28)), email de confirmación ([:48](src/services/tickets.service.js#L48)), permisos sobre recursos propios ([:83](src/services/tickets.service.js#L83)) y estados de evento ([events.service.js:111-113](src/services/events.service.js#L111-L113)). |
 
-### Detalles
+### Estructura del proyecto
 
-- Los services no importan `mongoose` ni modelos. `GET /api/users` excluye `password` en la consulta y `toUserDTO` lo filtra de nuevo; ninguna respuesta incluye `password`, ni en texto plano ni hasheada.
-- Errores: los services lanzan `AppError` (`src/utils/errors.js`) y `error.middleware.js` responde siempre `{ "status": "error", "message": "..." }` con `400` (datos inválidos), `401` (sin sesión), `403` (sin permisos), `404` (no encontrado), `409` (conflicto: email duplicado, evento no publicado, sin cupos, inscripción duplicada, ticket ya cancelado) o `500` (error interno, sin detalles).
-- Pruebas: `npm test` corre `test/ticket.dto.test.js` con `node:test` y comprueba que un ticket con `user` populado no exponga la clave `password` ni el hash.
-- Casos verificados: flujo registro → login → crear evento → inscribirse → mis tickets → cancelar; `/current` sin `password`; errores de negocio con su código (no 500); `401` sin sesión y `403` sin permisos.
+```text
+├── docs/
+│   └── plataforma-eventos.postman_collection.json
+├── scripts/
+│   └── seed.js
+├── src/
+│   ├── config/         database, env, mailer, passport.config
+│   ├── controllers/    events, health, sessions, tickets, users
+│   ├── dao/            events, tickets, users
+│   ├── dto/            dto.utils, event, ticket, user
+│   ├── middlewares/    auth, authorize, error, not-found
+│   ├── models/         Event, Ticket, User
+│   ├── repositories/   events, tickets, users
+│   ├── routes/         events, health, sessions, tickets, users
+│   ├── services/       email, events, sessions, tickets, users
+│   ├── utils/          errors, hash, jwt
+│   ├── app.js
+│   └── server.js
+├── test/
+│   └── ticket.dto.test.js
+├── .env.example
+└── package.json
+```
 
-### Corrección: actualización parcial de eventos
+## Seguridad
 
-`PUT /api/events/:id` (y su alias `PATCH`) respondía `400` desde la pre-entrega 6 si el body no traía todos los campos, porque el service copiaba el documento con `{ ...doc }`. Ahora usa `doc.toObject()` y los campos no enviados conservan su valor. Es la corrección de un bug, no una funcionalidad nueva.
+- Las contraseñas se guardan hasheadas con bcrypt. Ninguna respuesta ni el payload del JWT incluyen `password`.
+- El JWT viaja en una cookie `httpOnly`, así que JavaScript del navegador no puede leerlo.
+- El registro público no permite elegir el rol.
+- Las credenciales (MongoDB, JWT, SMTP) se leen solo de variables de entorno. `.env` y `node_modules` están en `.gitignore`.
+- Los errores internos no exponen detalles al cliente.
+
+## Pruebas y colección de Postman
+
+- `npm test` corre [test/ticket.dto.test.js](test/ticket.dto.test.js). La prueba pasa a `toTicketDTO` un ticket con `user` y `event` populados, donde el usuario tiene un hash de contraseña ficticio, y comprueba que no aparezcan `password` ni el hash.
+- [docs/plataforma-eventos.postman_collection.json](docs/plataforma-eventos.postman_collection.json) recorre los 10 casos del flujo completo:
+  1. Registro → login → `/current` → logout → `/current` responde `401`.
+  2. Un `user` intenta crear un evento → `403`.
+  3. Un `organizer` crea y publica un evento, el `user` se inscribe (se envía el email) y el cupo se descuenta.
+  4. Inscripción duplicada → `409`.
+  5. Evento sin cupo → `409`.
+  6. Cancelar el ticket libera el cupo y la nueva inscripción funciona.
+  7. Un `organizer` intenta modificar un evento ajeno → `403`.
+  8. Un `admin` modifica el evento de otro organizador → `200`.
+  9. Ninguna respuesta contiene `password`.
+  10. Listado paginado con `?status=published&page=2&limit=5`.
+
+  Para usarla: levantar el servidor, correr `npm run seed`, importar la colección en Postman y ejecutarla con el Collection Runner, en orden. Cada request trae tests que verifican el código y el contenido de la respuesta, y Postman maneja la cookie de sesión de forma automática.
+
+## Historial de entregas
+
+| Entrega | Incorporó |
+|---|---|
+| Pre-entrega 1–2 | Servidor Express, conexión a MongoDB y registro de usuarios con bcrypt |
+| Pre-entrega 3 | Login, current y logout con JWT en cookie `httpOnly` |
+| Pre-entrega 4 | Passport con estrategias `register`, `login` y `current` |
+| Pre-entrega 5 | Roles y middlewares de autenticación (401) y autorización (403) |
+| Pre-entrega 6 | Eventos: validaciones, estados, filtros, paginación y permisos de dueño |
+| Pre-entrega 7 | Tickets, cupos, duplicados, cancelación y emails con Nodemailer |
+| Pre-entrega 8 | Capas DAO, Repository y DTO, y middleware centralizado de errores |
+| Entrega final | Listado y tickets alineados al formato pedido, script de usuarios de prueba, colección de Postman y documentación completa |
+
+Corrección incluida desde la pre-entrega 8: `PUT /api/events/:id` respondía `400` si el body no traía todos los campos, porque el service copiaba el documento con `{ ...doc }`. Ahora usa `doc.toObject()` y los campos no enviados conservan su valor. Es la corrección de un bug, no una funcionalidad nueva.

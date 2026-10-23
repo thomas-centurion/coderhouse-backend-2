@@ -3,7 +3,7 @@ import eventsService from "../services/events.service.js";
 const getEvents = async (req, res, next) => {
   try {
     const result = await eventsService.getEvents(req.query);
-    res.status(200).json({ status: "success", payload: result });
+    res.status(200).json({ status: "success", ...result });
   } catch (error) {
     next(error);
   }

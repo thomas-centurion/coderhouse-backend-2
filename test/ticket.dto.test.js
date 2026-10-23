@@ -43,6 +43,7 @@ test("toTicketDTO no expone password aunque user y event estén populados", () =
   assert.deepEqual(Object.keys(dto), [
     "id",
     "event",
+    "user",
     "status",
     "quantity",
     "reservationCode",
@@ -54,4 +55,5 @@ test("toTicketDTO no expone password aunque user y event estén populados", () =
     date: ticket.event.date,
     location: "Buenos Aires",
   });
+  assert.equal(dto.user, "6650000000000000000000b1");
 });

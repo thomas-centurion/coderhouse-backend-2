@@ -1,10 +1,11 @@
 {
-  "name": "preentrega-1",
+  "name": "plataforma-eventos",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "API REST de una plataforma de eventos e inscripciones con Express, MongoDB, JWT, Passport y Nodemailer",
   "scripts": {
-    "start": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed": "node scripts/seed.js",
     "test": "node --test"
   },
   "keywords": [],
